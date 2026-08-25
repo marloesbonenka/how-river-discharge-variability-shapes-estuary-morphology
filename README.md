@@ -1,18 +1,9 @@
 # How River Discharge Variability Shapes Estuary Morphology
 
-## 🗺️ Synopsis
-
 This repository contains the reproducible analysis workflow for the PhD research project **“How River Discharge Variability Shapes Estuary Morphology.”** The code investigates how variability in river discharge influences estuarine morphology using numerical modelling, post-processing, and quantitative analysis.
 
 The repository is organised to connect model setup, post-processing, derived data, and figure-generation scripts directly to the analyses and figures presented in the associated paper.
-
----
-
-## 📑 Tutorial
-
-✨ **Show people what your software can do!** ✨
-
-The repository provides the scripts required to reproduce the main analyses and figures of the paper. The general workflow is:
+It provides the scripts required to reproduce the main analyses and figures of the paper. The general workflow is:
 
 ```text
 model setup
