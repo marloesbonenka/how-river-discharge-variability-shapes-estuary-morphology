@@ -98,20 +98,20 @@ python figures/<figure-script-name>.py
 
 ---
 
-## 👩‍🔧 Contact Information
+## Contact Information
 
 For questions about the research, model setup, analysis, or code, please contact:
 
-* **Author:** <name>
-* **Email:** <email-address>
-* **ORCID:** <ORCID>
-* **Institution:** <institution>
+* **Author:** Marloes Bonenkamp
+* **Email:** m.bonenkamp@tudelft.nl
+* **ORCID:** [<ORCID>](https://orcid.org/0009-0009-1292-2444)
+* **Institution:** Delft University of Technology, The Netherlands
 
 For code issues or reproducibility problems, please open an issue in this repository.
 
 ---
 
-## 🚀 Install Instructions
+## Install Instructions
 
 The computational environment is defined in `environment.yml` and uses packages from the **conda-forge** ecosystem.
 
@@ -145,7 +145,7 @@ The repository assumes that the required numerical modelling software and depend
 
 ---
 
-## 📜 Citation Instructions
+## Citation Instructions
 
 If you use the code, analysis workflow, or derived results from this repository, please cite the associated paper:
 
@@ -163,7 +163,7 @@ The `CITATION.cff` file contains the machine-readable citation information for t
 
 ---
 
-## 🙌 Contribution Statement
+## Contribution Statement
 
 This repository primarily contains research code supporting a specific scientific publication. Contributions that improve reproducibility, documentation, robustness, or code quality are welcome.
 
@@ -178,7 +178,7 @@ Please avoid modifying derived results or figure-generation workflows without do
 
 ---
 
-## 📚 Reference Material
+## Reference Material
 
 The main reference for the scientific methodology is the associated paper:
 
@@ -252,7 +252,7 @@ The README is intended to provide a direct link between the computational workfl
 
 ---
 
-## ⚖️ Licensing Statement
+## Licensing Statement
 
 The code in this repository is released under the license specified in `LICENSE`.
 
@@ -262,7 +262,7 @@ Please note that the license for the code does not necessarily apply to external
 
 ---
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 This research was supported by:
 
@@ -283,7 +283,7 @@ for their contributions to this research.
 
 ---
 
-## 📄 Related Publication
+## Related Publication
 
 **How River Discharge Variability Shapes Estuary Morphology**
 
@@ -291,7 +291,7 @@ for their contributions to this research.
 
 ---
 
-## 🔬 Reproducibility
+## Reproducibility
 
 This repository is designed to make the computational workflow underlying the paper transparent and reproducible.
 
