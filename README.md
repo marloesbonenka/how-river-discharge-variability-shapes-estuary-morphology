@@ -275,22 +275,3 @@ for their contributions to this research.
 **How River Discharge Variability Shapes Estuary Morphology**
 
 <Authors>. <Year>. <Journal>. <DOI>
-
----
-
-## Reproducibility
-
-This repository is designed to make the computational workflow underlying the paper transparent and reproducible.
-
-The repository distinguishes between:
-
-* **Model setup** — how experiments and discharge scenarios are defined;
-* **Post-processing** — how model output is loaded, processed, and diagnosed;
-* **Derived data** — small processed datasets required for analysis;
-* **Figure scripts** — code used to generate the figures presented in the paper.
-
-Large model outputs are not included unless explicitly stated. Where external data or model outputs are required, their source and access instructions should be documented here:
-
-<Instructions for accessing external model output / datasets>
-
----
