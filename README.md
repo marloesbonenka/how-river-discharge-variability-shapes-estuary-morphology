@@ -104,7 +104,7 @@ For questions about the research, model setup, analysis, or code, please contact
 
 * **Author:** Marloes Bonenkamp
 * **Email:** m.bonenkamp@tudelft.nl
-* **ORCID:** [<ORCID>](https://orcid.org/0009-0009-1292-2444)
+* **ORCID:** https://orcid.org/0009-0009-1292-2444
 * **Institution:** Delft University of Technology, The Netherlands
 
 For code issues or reproducibility problems, please open an issue in this repository.
