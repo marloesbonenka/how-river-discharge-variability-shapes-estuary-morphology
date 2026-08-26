@@ -6,20 +6,23 @@ The repository is organised to connect model setup, post-processing, derived dat
 It provides the scripts required to reproduce the main analyses and figures of the paper. The general workflow is:
 
 ```text
+global data analysis
+    ↓
 model setup
     ↓
 numerical model runs
     ↓
 post-processing
     ↓
-derived metrics / diagnostics
-    ↓
 figure generation
     ↓
 paper figures and results
 ```
+### 1. Global data analysis
 
-### 1. Set up the model
+The `global_data_analysis/` directory contains the files and scripts used to analyze tide-river dominance and river discharge variability in estuaries around the globe. 
+
+### 2. Set up the model
 
 The `model_setup/` directory contains the files and scripts used to define model experiments and generate the discharge-variability parameters used in the simulations.
 
@@ -31,7 +34,7 @@ This includes:
 * Generation of discharge (`Q`) parameters
 * Other experiment-specific setup files
 
-### 2. Post-process model output
+### 3. Post-process model output
 
 The `postprocessing/` directory contains scripts for reading, processing, and diagnosing model output.
 
@@ -41,22 +44,6 @@ Examples include:
 * `F_loaddata` — loading model output for analysis
 * Diagnostic scripts for checking model behaviour and derived quantities
 * Calculation of summary statistics used in subsequent analysis
-
-### 3. Generate derived data
-
-Small processed datasets required for analysis are stored in:
-
-```text
-data/derived/
-```
-
-These may include quantities such as:
-
-* Discharge percentiles
-* `L_TI` time series
-* Other processed model outputs and summary statistics
-
-Large raw model outputs are not stored in this repository unless otherwise stated.
 
 ### 4. Reproduce paper figures
 
@@ -288,22 +275,3 @@ for their contributions to this research.
 **How River Discharge Variability Shapes Estuary Morphology**
 
 <Authors>. <Year>. <Journal>. <DOI>
-
----
-
-## Reproducibility
-
-This repository is designed to make the computational workflow underlying the paper transparent and reproducible.
-
-The repository distinguishes between:
-
-* **Model setup** — how experiments and discharge scenarios are defined;
-* **Post-processing** — how model output is loaded, processed, and diagnosed;
-* **Derived data** — small processed datasets required for analysis;
-* **Figure scripts** — code used to generate the figures presented in the paper.
-
-Large model outputs are not included unless explicitly stated. Where external data or model outputs are required, their source and access instructions should be documented here:
-
-<Instructions for accessing external model output / datasets>
-
----

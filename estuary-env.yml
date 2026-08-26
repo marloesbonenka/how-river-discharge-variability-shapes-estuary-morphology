@@ -1,0 +1,28 @@
+name: estuary-env
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - xarray
+  - xugrid
+  - numpy
+  - pandas
+  - matplotlib
+  - pillow
+  - netcdf4
+  - dask
+  - ipykernel
+  - cmocean
+  - cartopy
+  - pip
+  - earthengine-api
+  - geemap
+  - xee
+  - geopandas
+  - osmnx
+  - seaborn
+  - openpyxl
+  - pip:
+      - dfm_tools
+      - bmi-python
+      - dycove-model
