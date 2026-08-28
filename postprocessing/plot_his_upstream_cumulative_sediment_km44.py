@@ -18,8 +18,8 @@ from scipy import stats
 
 sys.path.append(r"C:\Users\marloesbonenka\Nextcloud\Python\01_Delft3D-FM\02_Postprocessing\FUNCTIONS")
 
-from FUNCTIONS.F_loaddata import load_and_cache_scenario
-from FUNCTIONS.F_general import get_variability_map, find_variability_model_folders
+from functions.F_loaddata import load_and_cache_scenario
+from functions.F_general import get_variability_map, find_variability_model_folders
 #%%
 
 # --- AGU figure sizing (figures must be 50-170 mm wide) ---

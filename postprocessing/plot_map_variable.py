@@ -6,10 +6,10 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import cmocean
 
-from FUNCTIONS.F_general import create_bedlevel_colormap, create_terrain_colormap, create_water_colormap, create_shear_stress_colormap
-from FUNCTIONS.F_general import get_variability_map, find_variability_model_folders
-from FUNCTIONS.F_map_cache import cache_tag_from_bbox, load_or_update_map_cache_multi
-from FUNCTIONS.F_loaddata import get_stitched_map_run_paths
+from functions.F_general import create_bedlevel_colormap, create_terrain_colormap, create_water_colormap, create_shear_stress_colormap
+from functions.F_general import get_variability_map, find_variability_model_folders
+from functions.F_map_cache import cache_tag_from_bbox, load_or_update_map_cache_multi
+from functions.F_loaddata import get_stitched_map_run_paths
 
 #%% --- 1. SETTINGS ---
 # Which scenarios to process (set to None or empty list for all)

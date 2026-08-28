@@ -34,8 +34,8 @@ import numpy as np
 
 sys.path.append(r"c:\Users\marloesbonenka\Nextcloud\Python\01_Delft3D-FM\02_Postprocessing")
 
-from FUNCTIONS.F_map_cache import cache_tag_from_bbox, load_or_update_map_cache_multi
-from FUNCTIONS.F_loaddata import get_stitched_map_run_paths
+from functions.F_map_cache import cache_tag_from_bbox, load_or_update_map_cache_multi
+from functions.F_loaddata import get_stitched_map_run_paths
 
 # ---------------------------------------------------------------------------
 # CONFIGURATION
