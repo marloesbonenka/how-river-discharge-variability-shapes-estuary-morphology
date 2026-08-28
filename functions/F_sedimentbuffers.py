@@ -5,13 +5,96 @@ from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 
-from FUNCTIONS.F_loaddata import load_and_cache_scenario, get_stitched_his_paths
-from FUNCTIONS.F_general import find_variability_model_folders
+from functions.F_loaddata import load_and_cache_scenario, get_stitched_his_paths
+from functions.F_general import find_variability_model_folders
 
 
 def tidal_avg(arr, window):
     """Centered moving average over `window` samples."""
     return np.convolve(arr, np.ones(window) / window, mode="same")
+
+
+def compute_net_along_flow_transport(ds, window_hours, min_velocity):
+    """Compute the time-averaged, flood/ebb-signed, along-flow sediment
+    transport over the last `window_hours` of the dataset. Returns a
+    (net_da, actual_window_hours) tuple.
+
+    At each cell and timestep:
+      1. transport_mag_along_flow = (sx*ucx + sy*ucy) / |u|, clipped to >= 0.
+         This is the magnitude of sediment transport aligned with the local
+         flow direction.
+      2. flood_ebb_sign = sign(ucx) -- whether the flow itself is landward
+         (+) or seaward (-) at the snapshot moment.
+      s_along = transport_mag_along_flow * flood_ebb_sign
+    """
+    if 'time' not in ds.dims or len(ds.time) == 0:
+        raise ValueError("No time dimension in dataset.")
+    if 'mesh2d_sxtot' not in ds or 'mesh2d_sytot' not in ds:
+        raise ValueError("Sediment transport components not found in dataset.")
+    if 'mesh2d_ucx' not in ds or 'mesh2d_ucy' not in ds:
+        raise ValueError(
+            "Velocity components (mesh2d_ucx/ucy) not found in dataset -- "
+            "required for local flood/ebb direction projection."
+        )
+
+    time_values = np.asarray(ds.time.values).astype('datetime64[ns]')
+    print(f"  Total timesteps: {len(time_values)}  ({time_values[0]} \u2192 {time_values[-1]})")
+
+    # --- Select last window_hours of data ---
+    t_end = time_values[-1]
+    t_start = t_end - np.timedelta64(int(window_hours * 3600), 's')
+    window_mask = time_values >= t_start
+    n_window = int(window_mask.sum())
+    if n_window < 2:
+        raise ValueError(f"Not enough timesteps in last {window_hours}h window (found {n_window}).")
+
+    print(f"  Using last {window_hours}h: {n_window} timesteps "
+          f"({time_values[window_mask][0]} \u2192 {time_values[window_mask][-1]})")
+
+    actual_window_hours = (time_values[window_mask][-1] - time_values[window_mask][0]) / np.timedelta64(1, 'h')
+    if actual_window_hours < 11.0:   # less than ~1 M2 cycle (12h25m)
+        print(f"  [WARNING] Actual available window is only {actual_window_hours:.1f}h -- "
+              f"shorter than one tidal cycle. Result will reflect a partial cycle, "
+              f"not a flood/ebb-averaged net transport. Interpret with caution.")
+
+    ds_window = ds.isel(time=np.where(window_mask)[0])
+
+    # --- compute flood/ebb transport magnitude, then time-integrate ---
+    # sxtot/sytot have shape (time, nSedTot, nFaces) -> sum over sediment fractions first
+    sx = ds_window['mesh2d_sxtot'].sum(dim='nSedTot').values   # (n_window, nFaces)
+    sy = ds_window['mesh2d_sytot'].sum(dim='nSedTot').values   # (n_window, nFaces)
+    ucx = ds_window['mesh2d_ucx'].values                        # (n_window, nFaces)
+    ucy = ds_window['mesh2d_ucy'].values                        # (n_window, nFaces)
+
+    u_mag = np.sqrt(ucx**2 + ucy**2)  # velocity magnitude, defines the local flow direction
+
+    # STEP 1 -- transport magnitude aligned with the local flow direction.
+    with np.errstate(invalid='ignore', divide='ignore'):
+        transport_mag_along_flow = np.where(
+            u_mag > min_velocity,
+            (sx * ucx + sy * ucy) / np.where(u_mag > 0, u_mag, 1),
+            0.0,
+        )
+    transport_mag_along_flow = np.clip(transport_mag_along_flow, 0.0, None)
+
+    # STEP 2 -- assign flood(+)/ebb(-) sign based on whether the flow is
+    # landward or seaward at that instant.
+    flood_ebb_sign = np.sign(ucx)
+    s_along = transport_mag_along_flow * flood_ebb_sign
+
+    # time coordinate in seconds, for trapezoidal integration
+    t_seconds = (ds_window['time'].values - ds_window['time'].values[0]) / np.timedelta64(1, 's')
+    t_seconds = t_seconds.astype(float)
+
+    # Integrate the signed along-flow transport over time -> [m^2] per face over the window
+    net_transport_integrated = np.trapezoid(s_along, x=t_seconds, axis=0)
+
+    # Time-averaged signed along-flow flux over the window [m^2/s], same units as instantaneous sxtot/sytot.
+    elapsed_seconds = t_seconds[-1] - t_seconds[0]
+    net_transport_per_cycle = net_transport_integrated / elapsed_seconds
+
+    net_da = ds_window['mesh2d_sxtot'].isel(time=0, nSedTot=0).copy(data=net_transport_per_cycle)
+    return net_da, actual_window_hours
 
 
 def load_sedimentbuffer_runs(

@@ -92,6 +92,25 @@ def select_cache_path(cache_dir: Path, folder_name: str, var_name: str, tag: str
     return tagged
 
 
+def resolve_cache_folder_label(cache_dir: Path, real_folder_name: str, var_names, cache_tag) -> str:
+    """Some existing caches were written with '_mean' inserted into the
+    folder label even though the real run folder itself has no '_mean'
+    suffix (e.g. constant-discharge runs). If the cache for the real folder
+    name is missing but a '_mean'-labeled cache exists (for all requested
+    variables), reuse that label so the existing cache is picked up instead
+    of triggering an unnecessary rebuild."""
+    candidates = [real_folder_name]
+    if '_mean' not in real_folder_name and '.' in real_folder_name:
+        stem, _, run_id = real_folder_name.rpartition('.')
+        candidates.append(f"{stem}_mean.{run_id}")
+
+    for candidate in candidates:
+        cache_paths = [select_cache_path(cache_dir, candidate, v, cache_tag) for v in var_names]
+        if all(p.exists() for p in cache_paths):
+            return candidate
+    return real_folder_name
+
+
 def _expand_run_path_files(run_paths: Iterable) -> list[Path]:
     files: list[Path] = []
     for run_path in run_paths:
@@ -374,53 +393,6 @@ def build_masked_map_dataset(run_paths: Iterable, var_names, bbox=None, chunks=N
                   f"-> actual {np.datetime_as_string(np.datetime64(t_actual, 'D'), unit='D')}")
 
     return full_ds
-
-
-def load_or_update_map_cache(
-    cache_path: Path,
-    run_paths: Iterable,
-    var_names,
-    bbox=None,
-    append_time=True,
-    append_vars=True,
-    chunks=None,
-    cache_tag=None,
-):
-    run_paths = list(run_paths)
-
-    if cache_path.exists() and _cache_is_fresh([cache_path], run_paths):
-        return xu.open_dataset(cache_path)
-
-    ds_existing = None
-    if cache_path.exists():
-        ds_existing = xu.open_dataset(cache_path)
-
-    ds_new = build_masked_map_dataset(run_paths, var_names, bbox=bbox, chunks=chunks)
-    if ds_new is None:
-        if ds_existing is not None:
-            return ds_existing
-        return None
-
-    ds_out = _merge_for_cache(ds_existing, ds_new, append_time, append_vars)
-
-    if ds_out is None:
-        if ds_existing is not None:
-            ds_existing.close()
-        return None
-
-    if cache_tag is not None:
-        ds_out.attrs['cache_tag'] = str(cache_tag)
-    ds_out.attrs['cache_bbox'] = "full" if bbox is None else str(list(bbox))
-
-    should_write = (not cache_path.exists()) or (ds_out is not ds_existing)
-    if should_write:
-        comp = dict(zlib=True, complevel=4)
-        encoding = {v: comp for v in ds_out.data_vars}
-        _write_dataset_atomic(ds_out, cache_path, encoding, ds_existing=ds_existing)
-    elif ds_existing is not None:
-        ds_existing.close()
-
-    return ds_out
 
 
 # Extract face-center coordinates from a cached xugrid dataset across version variants.

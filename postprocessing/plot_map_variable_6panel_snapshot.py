@@ -17,9 +17,10 @@ import matplotlib.gridspec as gridspec
 from matplotlib.ticker import FuncFormatter
 import cmocean
 
-from functions.F_general import create_terrain_colormap, create_water_colormap, create_shear_stress_colormap
+from functions.F_general import create_terrain_colormap, create_water_colormap, create_shear_stress_colormap, apply_plot_style, find_run_folder_by_qpmn
 from functions.F_map_cache import cache_tag_from_bbox, load_or_update_map_cache_multi
 from functions.F_loaddata import get_stitched_map_run_paths
+from functions.F_morphological_activity import build_centerline_reference
 
 #%% --- 1. SETTINGS ---
 BASE_DIR = Path(r"U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output")
@@ -39,41 +40,7 @@ MM_TO_IN = 1 / 25.4
 FIGURE_WIDTH_MM = 170          # AGU full-page width, since we need 2 columns + colorbar
 CBAR_WIDTH_FRACTION = 0.03     # fraction of total width reserved for the shared colorbar
 
-AGU_RC = {
-    'font.size': 8,
-    'font.family': 'sans-serif',
-    'font.sans-serif': ['Calibri', 'Helvetica', 'DejaVu Sans'],
-    'axes.labelsize': 8,
-    'axes.titlesize': 8,
-    'xtick.labelsize': 8,
-    'ytick.labelsize': 8,
-    'legend.fontsize': 8,
-    'figure.titlesize': 9,
-    'mathtext.fontset': 'custom',
-    'mathtext.rm': 'Calibri',
-    'mathtext.it': 'Calibri:italic',
-    'mathtext.bf': 'Calibri:bold',
-
-    # --- Line weights: avoid hairlines (AGU rejects anything under 0.5pt) ---
-    'axes.linewidth': 0.5,
-    'lines.linewidth': 0.75,
-    'grid.linewidth': 0.4,
-    'xtick.major.width': 0.5,
-    'ytick.major.width': 0.5,
-    'xtick.minor.width': 0.35,
-    'ytick.minor.width': 0.35,
-
-    # --- Keep text as editable text in vector exports (not outlined paths) ---
-    'pdf.fonttype': 42,
-    'ps.fonttype': 42,
-    'svg.fonttype': 'none',
-
-    # --- Resolution / export ---
-    'figure.dpi': 150,          # screen preview only
-    'savefig.dpi': 300,         # within AGU's 300-600 ppi raster range
-}
-plt.rcParams.update(plt.rcParamsDefault)
-plt.rcParams.update(AGU_RC)
+apply_plot_style('AGU', font_size=8)
 
 # Detrending settings (bed level only) - same convention as plot_map_variable.py
 reference_time_idx = 0
@@ -123,59 +90,6 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 #%% --- 2. HELPERS ---
 _FOLDER_RE = re.compile(r'^\d+_Qr(\d+)_pm(\d+)_n(\d+)(?:_mean)?\.\d+$')
-
-
-def find_run_folder(q_base_path, discharge, pm, n):
-    """Find the run folder matching a given (discharge, pm, n), e.g.
-    '10_Qr500_pm3_n3.9599951' for (discharge=500, pm=3, n=3)."""
-    candidates = []
-    for f in q_base_path.iterdir():
-        if not f.is_dir() or not f.name[:1].isdigit():
-            continue
-        m = _FOLDER_RE.match(f.name)
-        if not m:
-            continue
-        q_val, pm_val, n_val = int(m.group(1)), int(m.group(2)), int(m.group(3))
-        if q_val == discharge and pm_val == pm and n_val == n:
-            candidates.append(f)
-    if not candidates:
-        raise FileNotFoundError(
-            f"No folder found for Q={discharge}, pm={pm}, n={n} in {q_base_path}"
-        )
-    candidates.sort(key=lambda x: int(x.name.split('_')[0]))
-    return candidates[0]
-
-
-def build_centerline_reference(ds, var_name, reference_time_idx, xmin, xmax, centerline_y):
-    """Build a per-face reference array for detrending, derived from the
-    centerline bed-level profile at the reference timestep (t=0), sampled
-    along a known/fixed centerline y-coordinate. (Copied from
-    plot_map_variable.py so this script is self-contained.)"""
-    if 'mesh2d_face_x' not in ds or 'mesh2d_face_y' not in ds:
-        raise ValueError("Dataset is missing mesh2d_face_x/mesh2d_face_y; cannot build centerline reference.")
-
-    face_x = np.asarray(ds['mesh2d_face_x'].values)
-    face_y = np.asarray(ds['mesh2d_face_y'].values)
-    reference_bed_full = np.asarray(ds[var_name].isel(time=reference_time_idx).values)
-
-    in_range = (face_x >= xmin) & (face_x <= xmax)
-    if not np.any(in_range):
-        raise ValueError(f"No faces found with x in [{xmin}, {xmax}]; cannot build centerline reference.")
-
-    x_in = face_x[in_range]
-    y_in = face_y[in_range]
-    bed_in = reference_bed_full[in_range]
-
-    y_dist = np.abs(y_in - centerline_y)
-    order = np.lexsort((y_dist, x_in))
-    x_ord = x_in[order]
-    bed_ord = bed_in[order]
-    unique_x, first_idx = np.unique(x_ord, return_index=True)
-    centerline_bed = bed_ord[first_idx]
-
-    reference_per_face = np.full(face_x.shape, np.nan)
-    reference_per_face[in_range] = np.interp(x_in, unique_x, centerline_bed)
-    return reference_per_face
 
 
 #%% --- 3. FIGURE / GRIDSPEC LAYOUT ---
@@ -231,7 +145,11 @@ detrended_active = False
 for r, c, q, pm, n, title in panel_defs:
     ax = axes[r, c]
     q_base_path = BASE_DIR / f"Q{q}"
-    folder = find_run_folder(q_base_path, q, pm, n)
+    folder = find_run_folder_by_qpmn(
+        q_base_path, q, pm, n,
+        folder_regex=_FOLDER_RE,
+        sort_key=lambda x: int(x.name.split('_')[0]),
+    )
     print(f"[row {r}, col {c}] Q={q} pm={pm} n={n} -> {folder.name}")
 
     assessment_dir = q_base_path / 'cached_data'

@@ -12,19 +12,20 @@ discharge group per plot.
 """
 
 # %% Imports
-import sys
-import re
 from pathlib import Path
 import numpy as np
 import pandas as pd
-import xarray as xr
 import matplotlib.pyplot as plt
 from scipy import stats
 
-sys.path.append(r"c:\Users\marloesbonenka\Nextcloud\Python\01_Delft3D-FM\02_Postprocessing")
-
 from functions.F_map_cache import cache_tag_from_bbox, load_or_update_map_cache_multi
 from functions.F_loaddata import get_stitched_map_run_paths, get_stitched_his_paths
+from functions.F_general import DHR_FOLDER_RE, discover_variability_scenario_folders, get_last_n_hours_window, get_last_n_days_window
+from functions.F_hypsometry import classify_intertidal_mask, intertidal_area_from_mask
+from functions.F_tidalrange_currentspeed import (
+    compute_xprofile_mean, build_ubar_matrix, front_from_profile,
+    get_last_n_days_window_from_his, load_cross_section_prism_signal, compute_tidal_prism,
+)
 
 # =============================================================================
 # %% --- SHARED CONFIGURATION ---
@@ -37,7 +38,7 @@ DISCHARGES         = [250, 500, 1000]
 RUN_IDS_TO_INCLUDE = {1, 6, 9, 10, 11}
 
 # Matches: dhr_{run_id}_Qr{Q}_pm{pm}_n{n}[_mean].{runid}
-_FOLDER_RE = re.compile(r'^dhr_(\d{2})_Qr(\d+)_pm(\d+)_n(\d+)(?:_mean)?\.\d+$')
+_FOLDER_RE = DHR_FOLDER_RE
 
 # MAP cache settings (shared by intertidal area and tidal intrusion)
 CACHE_BBOX = [1, 1, 45000, 15000]
@@ -95,178 +96,6 @@ TP_PRISM_SCALE       = 1e6
 
 
 # =============================================================================
-# %% --- SHARED HELPERS ---
-# =============================================================================
-
-def discover_scenario_folders(dhr_base, discharge):
-    """Find dhr_XX_Qr{discharge}_pm{pm}_n{n}[_mean].{runid} folders,
-    restricted to RUN_IDS_TO_INCLUDE. Returns list of
-    (folder_path, run_id, pm_val, n_val)."""
-    results = []
-    if not dhr_base.exists():
-        return results
-    for folder in sorted(dhr_base.iterdir()):
-        if not folder.is_dir():
-            continue
-        m = _FOLDER_RE.match(folder.name)
-        if not m:
-            continue
-        run_id  = int(m.group(1))
-        q_val   = int(m.group(2))
-        pm_val  = int(m.group(3))
-        n_val   = int(m.group(4))
-        if run_id not in RUN_IDS_TO_INCLUDE or q_val != discharge:
-            continue
-        results.append((folder, run_id, pm_val, n_val))
-    return results
-
-
-# =============================================================================
-# %% --- INTERTIDAL AREA HELPERS ---
-# =============================================================================
-
-def get_last_n_hours_window(time_values, n_hours):
-    """Boolean mask selecting the last n_hours of a datetime64 array."""
-    t_end   = time_values[-1]
-    t_start = t_end - np.timedelta64(int(n_hours * 3600), 's')
-    return time_values >= t_start
-
-
-def compute_intertidal_area(ds_window):
-    """Wet/dry classification over the time window, restricted to the tidal
-    zone in x. Returns (area_m2, n_intertidal_faces, n_faces)."""
-    depth_vals  = ds_window['mesh2d_waterdepth'].values   # (n_window, nFaces)
-    wet_mask_t  = depth_vals > IA_WET_THRESHOLD
-
-    always_wet  = wet_mask_t.all(axis=0)
-    always_dry  = (~wet_mask_t).all(axis=0)
-    intertidal  = ~always_wet & ~always_dry
-
-    x_vals = (ds_window.coords[IA_FACE_X_VAR].values
-              if IA_FACE_X_VAR in ds_window.coords
-              else ds_window[IA_FACE_X_VAR].values)
-    in_zone    = (x_vals >= IA_X_MIN) & (x_vals <= IA_X_MAX)
-    intertidal = intertidal & in_zone
-
-    ba_da  = ds_window['mesh2d_flowelem_ba']
-    ba_vals = ba_da.isel(time=0).values if 'time' in ba_da.dims else ba_da.values
-
-    area_m2 = float(np.nansum(ba_vals[intertidal]))
-    return area_m2, int(intertidal.sum()), wet_mask_t.shape[1]
-
-
-# =============================================================================
-# %% --- TIDAL INTRUSION HELPERS ---
-# =============================================================================
-
-def get_last_n_days_window_ds(ds, n_days):
-    """(t_start, t_end) covering the last n_days of an xarray dataset."""
-    t_end   = ds.time.values[-1]
-    t_start = t_end - np.timedelta64(int(n_days * 24 * 3600), 's')
-    return t_start, t_end
-
-
-def compute_xprofile_mean(data_t, face_x, var_name, x_edges):
-    """Cross-sectional mean of the signed variable at each x-bin (one timestep)."""
-    vals    = data_t[var_name].values
-    bin_idx = np.digitize(face_x, x_edges) - 1
-    n_bins  = len(x_edges) - 1
-    profile = np.full(n_bins, np.nan)
-    for b in range(n_bins):
-        mask = bin_idx == b
-        if mask.any():
-            profile[b] = np.nanmean(vals[mask])
-    return profile
-
-
-def build_ubar_matrix(ds, face_x, var_name, x_edges):
-    """Ubar(x, t): cross-sectional mean signed velocity at every x-bin and
-    every timestep. Shape: (n_time, n_xbins)."""
-    n_time = len(ds.time)
-    n_bins = len(x_edges) - 1
-    Ubar   = np.full((n_time, n_bins), np.nan)
-    for idx in range(n_time):
-        data_t      = ds.isel(time=idx)
-        Ubar[idx, :] = compute_xprofile_mean(data_t, face_x, var_name, x_edges)
-    return Ubar
-
-
-def front_from_profile(profile_1d, x_centers, threshold):
-    """First x where profile drops below threshold moving landward (increasing x)."""
-    active = profile_1d > threshold
-    if not active[0]:
-        return np.nan
-    for i in range(len(profile_1d)):
-        if not active[i]:
-            return x_centers[i]
-    return x_centers[-1]
-
-
-# =============================================================================
-# %% --- TIDAL PRISM HELPERS ---
-# =============================================================================
-
-def get_last_n_days_window_paths(his_paths, n_days):
-    """(t_start, t_end) from the last n_days of the HIS file."""
-    ds      = xr.open_mfdataset(his_paths, coords='minimal', compat='override')
-    t_end   = ds.time.values[-1]
-    t_start = t_end - np.timedelta64(int(n_days * 24 * 3600), 's')
-    ds.close()
-    return t_start, t_end
-
-
-def load_his_signal(his_paths, t_start, t_end):
-    """Load river-corrected, sign-corrected cross-section discharge at the
-    estuary mouth. Mirrors load_his_data() in compute_tidal_prism.py."""
-    SOURCE_DIM = {'cross_section': 'cross_section_name', 'station': 'station_name'}
-    dim        = SOURCE_DIM[TP_SOURCE]
-
-    ds_his       = xr.open_mfdataset(his_paths, coords='minimal', compat='override')
-    ds_his_slice = ds_his.sel(time=slice(t_start, t_end))
-
-    loc_names = [
-        name.decode('utf-8').strip() if isinstance(name, bytes) else str(name).strip()
-        for name in ds_his_slice[dim].values
-    ]
-
-    try:
-        idx_mouth = next(i for i, name in enumerate(loc_names)
-                         if any(k in name for k in TP_MOUTH_KEYWORDS))
-    except StopIteration:
-        print('    [WARNING] Mouth keywords not found. Defaulting to index 0.')
-        idx_mouth = 0
-
-    idx_river = None
-    if TP_SUBTRACT_RIVER and TP_SOURCE == 'cross_section':
-        try:
-            idx_river = next(i for i, name in enumerate(loc_names)
-                             if any(k in name for k in TP_UPSTREAM_KEYWORDS))
-        except StopIteration:
-            print('    [WARNING] Upstream keywords not found. No river correction applied.')
-
-    time_values  = ds_his_slice.time.values
-    time_seconds = (time_values - time_values[0]) / np.timedelta64(1, 's')
-    data_mouth   = ds_his_slice[TP_VARIABLE].values[:, idx_mouth]
-    sign         = -1 if TP_NEGATE else 1
-
-    if TP_SUBTRACT_RIVER and idx_river is not None:
-        data_river = ds_his_slice[TP_VARIABLE].values[:, idx_river]
-        signal     = sign * (data_mouth - data_river)
-    else:
-        signal = sign * data_mouth
-
-    ds_his.close()
-    return time_seconds.astype(float), signal
-
-
-def compute_tidal_prism(time_seconds, signal):
-    """Tidal prism = sum(|signal|) * dt / 2, scaled to TP_PRISM_UNIT."""
-    dt    = np.median(np.diff(time_seconds))
-    prism = np.sum(np.abs(signal)) * dt / 2 / TP_PRISM_SCALE
-    return prism
-
-
-# =============================================================================
 # %% --- COMPUTE: INTERTIDAL AREA ---
 # =============================================================================
 print('\n' + '#'*60)
@@ -277,7 +106,7 @@ ia_datadict = {}
 
 for discharge in DISCHARGES:
     dhr_base         = BASE_DIR / f'Q{discharge}' / 'detailed-hydro-run'
-    scenario_folders = discover_scenario_folders(dhr_base, discharge)
+    scenario_folders = discover_variability_scenario_folders(dhr_base, discharge, RUN_IDS_TO_INCLUDE, _FOLDER_RE)
 
     if not scenario_folders:
         print(f'[SKIP] No matching folders in: {dhr_base}')
@@ -330,7 +159,10 @@ for discharge in DISCHARGES:
             print(f'    [WARNING] window is {actual_h:.1f}h -- shorter than one tidal cycle')
 
         ds_window = ds.isel(time=np.where(window_mask)[0])
-        area_m2, n_inter, n_faces = compute_intertidal_area(ds_window)
+        intertidal_mask = classify_intertidal_mask(
+            ds_window, IA_WET_THRESHOLD, IA_X_MIN, IA_X_MAX, face_x_var=IA_FACE_X_VAR,
+        )
+        area_m2, n_inter, n_faces = intertidal_area_from_mask(intertidal_mask, ds_window['mesh2d_flowelem_ba'])
         ds.close()
 
         area_km2 = area_m2 / 1e6
@@ -366,7 +198,7 @@ lti_datadict = {}
 
 for discharge in DISCHARGES:
     dhr_base         = BASE_DIR / f'Q{discharge}' / 'detailed-hydro-run'
-    scenario_folders = discover_scenario_folders(dhr_base, discharge)
+    scenario_folders = discover_variability_scenario_folders(dhr_base, discharge, RUN_IDS_TO_INCLUDE, _FOLDER_RE)
 
     if not scenario_folders:
         print(f'[SKIP] No matching folders in: {dhr_base}')
@@ -399,7 +231,7 @@ for discharge in DISCHARGES:
                 ds.close()
             continue
 
-        t_start, t_end = get_last_n_days_window_ds(ds, LTI_N_DAYS)
+        t_start, t_end = get_last_n_days_window(ds.time.values, LTI_N_DAYS)
         ds_win = ds.sel(time=slice(t_start, t_end))
 
         if len(ds_win.time) == 0:
@@ -456,7 +288,7 @@ tp_datadict = {}
 
 for discharge in DISCHARGES:
     dhr_base         = BASE_DIR / f'Q{discharge}' / 'detailed-hydro-run'
-    scenario_folders = discover_scenario_folders(dhr_base, discharge)
+    scenario_folders = discover_variability_scenario_folders(dhr_base, discharge, RUN_IDS_TO_INCLUDE, _FOLDER_RE)
 
     if not scenario_folders:
         print(f'[SKIP] No matching folders in: {dhr_base}')
@@ -478,9 +310,13 @@ for discharge in DISCHARGES:
             print('    [SKIP] No HIS data found.')
             continue
 
-        t_start, t_end = get_last_n_days_window_paths(his_paths, TP_WINDOW_DAYS)
-        time_s, signal = load_his_signal(his_paths, t_start, t_end)
-        prism          = compute_tidal_prism(time_s, signal)
+        t_start, t_end = get_last_n_days_window_from_his(his_paths, TP_WINDOW_DAYS)
+        time_s, signal = load_cross_section_prism_signal(
+            his_paths, t_start, t_end, variable=TP_VARIABLE,
+            mouth_keywords=TP_MOUTH_KEYWORDS, upstream_keywords=TP_UPSTREAM_KEYWORDS,
+            source=TP_SOURCE, subtract_river=TP_SUBTRACT_RIVER, negate=TP_NEGATE,
+        )
+        prism          = compute_tidal_prism(time_s, signal, scale=TP_PRISM_SCALE)
 
         print(f'    Tidal prism = {prism:.3f} {TP_PRISM_UNIT}')
 

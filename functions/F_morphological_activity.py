@@ -75,6 +75,61 @@ def morph_years_from_datetimes(times: pd.DatetimeIndex, *, startdate=None, morfa
     return hydro_years * float(morfac)
 
 
+def build_centerline_reference(ds, var_name, reference_time_idx, xmin, xmax, centerline_y):
+    """
+    Build a per-face reference array for detrending, derived from the
+    centerline bed-level profile at the reference timestep (t=0), sampled
+    along a known/fixed centerline y-coordinate.
+
+    For each unique x in [xmin, xmax], the reference value is the t=0 bed
+    level of the face whose y-coordinate is closest to `centerline_y` in
+    that x-column. This is interpolated to every face's own x-coordinate.
+    Faces with x outside [xmin, xmax] get NaN (no extrapolation), so areas
+    where the reference is not meaningful (e.g. the sea basin seaward of
+    the estuary mouth) are left unplotted rather than clamped to an edge
+    value.
+
+    Note: this only samples the *initial* (t=0) geometry to build the
+    reference profile. Any land masking for a given timestep should be
+    applied to the data being detrended (at that timestep), not here -
+    see the caller, where the current-timestep land mask is applied
+    BEFORE subtracting this reference, so that cells which have eroded
+    from land into estuary between t=0 and t=time are correctly included.
+    """
+    if 'mesh2d_face_x' not in ds or 'mesh2d_face_y' not in ds:
+        raise ValueError("Dataset is missing mesh2d_face_x/mesh2d_face_y; cannot build centerline reference.")
+
+    face_x = np.asarray(ds['mesh2d_face_x'].values)
+    face_y = np.asarray(ds['mesh2d_face_y'].values)
+    reference_bed_full = np.asarray(ds[var_name].isel(time=reference_time_idx).values)
+
+    in_range = (face_x >= xmin) & (face_x <= xmax)
+    if not np.any(in_range):
+        raise ValueError(f"No faces found with x in [{xmin}, {xmax}]; cannot build centerline reference.")
+
+    x_in = face_x[in_range]
+    y_in = face_y[in_range]
+    bed_in = reference_bed_full[in_range]
+
+    # For each unique x, pick the face whose y is closest to centerline_y.
+    # Sort primarily by x (ascending), secondarily by distance to
+    # centerline_y (ascending), so the first entry within each x-group is
+    # the closest-to-centerline face for that column.
+    y_dist = np.abs(y_in - centerline_y)
+    order = np.lexsort((y_dist, x_in))
+    x_ord = x_in[order]
+    bed_ord = bed_in[order]
+    unique_x, first_idx = np.unique(x_ord, return_index=True)
+    centerline_bed = bed_ord[first_idx]
+
+    # Interpolate the t=0 centerline profile to every face's x-coordinate.
+    # Faces with x outside [xmin, xmax] get NaN (left unplotted), not
+    # clamped to an edge value.
+    reference_per_face = np.full(face_x.shape, np.nan)
+    reference_per_face[in_range] = np.interp(x_in, unique_x, centerline_bed)
+    return reference_per_face
+
+
 def plot_activity_and_first_profile(
     *,
     dist_m: np.ndarray,

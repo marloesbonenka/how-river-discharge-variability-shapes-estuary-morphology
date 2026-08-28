@@ -9,7 +9,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import xarray as xr
 
-from FUNCTIONS.F_loaddata import load_cross_section_data, load_cross_section_data_from_cache
+from functions.F_loaddata import load_cross_section_data, load_cross_section_data_from_cache
 
 
 # =============================================================================

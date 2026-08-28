@@ -7,13 +7,11 @@ from pathlib import Path
 import re
 import numpy as np
 import matplotlib.pyplot as plt
-import sys
-
-sys.path.append(r"c:\Users\marloesbonenka\Nextcloud\Python\01_Delft3D-FM\02_Postprocessing")
 
 from functions.F_general import (
     get_variability_map,
     get_snapshot_matches_by_target_dates,
+    apply_plot_style,
 )
 
 from functions.F_map_cache import cache_tag_from_bbox, load_or_update_map_cache_multi, _get_face_coords
@@ -35,41 +33,7 @@ MM_TO_IN = 1 / 25.4
 FIGURE_WIDTH_MM = 170/2          # AGU full-page width, since we need 2 columns + colorbar
 CBAR_WIDTH_FRACTION = 0.03     # fraction of total width reserved for the shared colorbar
 
-AGU_RC = {
-    'font.size': 10,
-    'font.family': 'sans-serif',
-    'font.sans-serif': ['Calibri', 'Helvetica', 'DejaVu Sans'],
-    'axes.labelsize': 10,
-    'axes.titlesize': 10,
-    'xtick.labelsize': 10,
-    'ytick.labelsize': 10,
-    'legend.fontsize': 10,
-    'figure.titlesize': 10,
-    'mathtext.fontset': 'custom',
-    'mathtext.rm': 'Calibri',
-    'mathtext.it': 'Calibri:italic',
-    'mathtext.bf': 'Calibri:bold',
-
-    # --- Line weights: avoid hairlines (AGU rejects anything under 0.5pt) ---
-    'axes.linewidth': 0.5,
-    'lines.linewidth': 0.75,
-    'grid.linewidth': 0.5,
-    'xtick.major.width': 0.5,
-    'ytick.major.width': 0.5,
-    'xtick.minor.width': 0.35,
-    'ytick.minor.width': 0.35,
-
-    # --- Keep text as editable text in vector exports (not outlined paths) ---
-    'pdf.fonttype': 42,
-    'ps.fonttype': 42,
-    'svg.fonttype': 'none',
-
-    # --- Resolution / export ---
-    'figure.dpi': 150,          # screen preview only
-    'savefig.dpi': 300,         # within AGU's 300-600 ppi raster range
-}
-plt.rcParams.update(plt.rcParamsDefault)
-plt.rcParams.update(AGU_RC)
+apply_plot_style('AGU', font_size=10, title_delta=0, tick_delta=0, **{'grid.linewidth': 0.5})
 
 
 #%%

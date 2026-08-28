@@ -8,7 +8,6 @@ Outputs:
 #%%
 from pathlib import Path
 import re
-import sys
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -16,10 +15,8 @@ import matplotlib.dates as mdates
 import cmocean
 from scipy import stats
 
-sys.path.append(r"C:\Users\marloesbonenka\Nextcloud\Python\01_Delft3D-FM\02_Postprocessing\FUNCTIONS")
-
 from functions.F_loaddata import load_and_cache_scenario
-from functions.F_general import get_variability_map, find_variability_model_folders
+from functions.F_general import apply_plot_style, setup_variability_run_context
 #%%
 
 # --- AGU figure sizing (figures must be 50-170 mm wide) ---
@@ -27,42 +24,7 @@ MM_TO_IN = 1 / 25.4
 FIGURE_WIDTH_MM = 170          # AGU full-page width
 FIGURE_WIDTH_IN = FIGURE_WIDTH_MM * MM_TO_IN
 
-# --- AGU figure styling (Calibri font, AGU-compliant line weights/export dpi) ---
-AGU_RC = {
-    'font.size': 8,
-    'font.family': 'sans-serif',
-    'font.sans-serif': ['Calibri', 'Helvetica', 'DejaVu Sans'],
-    'axes.labelsize': 8,
-    'axes.titlesize': 8,
-    'xtick.labelsize': 8,
-    'ytick.labelsize': 8,
-    'legend.fontsize': 8,
-    'figure.titlesize': 9,
-    'mathtext.fontset': 'custom',
-    'mathtext.rm': 'Calibri',
-    'mathtext.it': 'Calibri:italic',
-    'mathtext.bf': 'Calibri:bold',
-
-    # --- Line weights: avoid hairlines (AGU rejects anything under 0.5pt) ---
-    'axes.linewidth': 0.5,
-    'lines.linewidth': 0.75,
-    'grid.linewidth': 0.4,
-    'xtick.major.width': 0.5,
-    'ytick.major.width': 0.5,
-    'xtick.minor.width': 0.35,
-    'ytick.minor.width': 0.35,
-
-    # --- Keep text as editable text in vector exports (not outlined paths) ---
-    'pdf.fonttype': 42,
-    'ps.fonttype': 42,
-    'svg.fonttype': 'none',
-
-    # --- Resolution / export ---
-    'figure.dpi': 150,          # screen preview only
-    'savefig.dpi': 300,         # within AGU's 300-600 ppi raster range
-}
-plt.rcParams.update(plt.rcParamsDefault)
-plt.rcParams.update(AGU_RC)
+apply_plot_style('AGU', font_size=8)
 
 # =========================
 # Configuration
@@ -87,37 +49,23 @@ SCENARIO_LABELS = None
 # colorblind friendly
 SCENARIO_COLORS = None
 BASE_DIRECTORY = Path(r"U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian")
-CONFIG = f"Model_Output/Q{DISCHARGE}"
-
-if ANALYZE_NOISY:
-    BASE_PATH = BASE_DIRECTORY / CONFIG / f"0_Noise_Q{DISCHARGE}"
-else:
-    BASE_PATH = BASE_DIRECTORY / CONFIG
-
-OUTPUT_DIR = BASE_PATH / "output_plots" / "plots_his_sedimentsupply_km44"
-CACHE_DIR = BASE_PATH / "cached_data"
-TIMED_OUT_DIR = BASE_PATH / "timed-out"
-
 
 #%%
 
-if not BASE_PATH.exists():
-    raise FileNotFoundError(f"Base path not found: {BASE_PATH}")
-
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-
-if TIMED_OUT_DIR is None or not TIMED_OUT_DIR.exists():
-    TIMED_OUT_DIR = None
-    print('[WARNING] Timed-out directory not found. No timed-out scenarios will be included.')
-
-variability_map = get_variability_map(DISCHARGE)
-
-model_folders = find_variability_model_folders(
-    base_path=BASE_PATH,
+run_context = setup_variability_run_context(
+    base_directory=BASE_DIRECTORY,
     discharge=DISCHARGE,
     scenarios_to_process=SCENARIOS_TO_PROCESS,
     analyze_noisy=ANALYZE_NOISY,
 )
+BASE_PATH = run_context['base_path']
+CACHE_DIR = run_context['cache_dir']
+TIMED_OUT_DIR = run_context['timed_out_dir']
+variability_map = run_context['variability_map']
+model_folders = run_context['model_folders']
+
+OUTPUT_DIR = BASE_PATH / "output_plots" / "plots_his_sedimentsupply_km44"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 print(f"Found {len(model_folders)} run folders in {BASE_PATH}")
 

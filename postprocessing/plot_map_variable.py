@@ -6,10 +6,11 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import cmocean
 
-from functions.F_general import create_bedlevel_colormap, create_terrain_colormap, create_water_colormap, create_shear_stress_colormap
-from functions.F_general import get_variability_map, find_variability_model_folders
+from functions.F_general import create_water_colormap, create_shear_stress_colormap, create_terrain_colormap
+from functions.F_general import apply_plot_style, compute_map_figsize, setup_variability_run_context
 from functions.F_map_cache import cache_tag_from_bbox, load_or_update_map_cache_multi
 from functions.F_loaddata import get_stitched_map_run_paths
+from functions.F_morphological_activity import build_centerline_reference
 
 #%% --- 1. SETTINGS ---
 # Which scenarios to process (set to None or empty list for all)
@@ -28,59 +29,13 @@ MM_TO_IN = 1 / 25.4
 FIGURE_WIDTH_MM = 0.5*170   # full-width figure; use ~84 for a single-column figure
 CBAR_WIDTH_FRACTION = 0.85  # fraction of total width reserved for the map itself (rest = colorbar + label)
 
-STYLES = {
-    'default': {},   # use matplotlib defaults
-    'whitefig': {
-        'figure.facecolor':    'none',
-        'axes.facecolor':      'none',
-        'axes.edgecolor':      'white',
-        'axes.labelcolor':     'white',
-        'xtick.color':         'white',
-        'ytick.color':         'white',
-        'text.color':          'white',
-        'grid.color':          'white',
-        'legend.facecolor':    'none',
-        'legend.edgecolor':    'white',
-        'savefig.transparent': True,
-    },
-    'AGU': {
-        'font.size': 8,
-        'font.family': 'sans-serif',
-        'font.sans-serif': ['Calibri', 'Helvetica', 'DejaVu Sans'],  # fallback if Arial unavailable
-        'axes.labelsize': 8,
-        'axes.titlesize': 8,
-        'xtick.labelsize': 8,
-        'ytick.labelsize': 8,
-        'legend.fontsize': 8,
-        'figure.titlesize': 8,
-        'mathtext.fontset': 'custom',
-        'mathtext.rm': 'Calibri',
-        'mathtext.it': 'Calibri:italic',
-        'mathtext.bf': 'Calibri:bold',
+STYLES = {'default', 'whitefig', 'AGU'}
+if STYLE not in STYLES:
+    raise ValueError(f"Unknown STYLE '{STYLE}'. Choose one of {sorted(STYLES)}.")
 
-        # --- Line weights: avoid hairlines (AGU rejects anything under 0.5pt) ---
-        'axes.linewidth': 0.5,
-        'lines.linewidth': 0.75,
-        'grid.linewidth': 0.4,
-        'xtick.major.width': 0.5,
-        'ytick.major.width': 0.5,
-        'xtick.minor.width': 0.35,
-        'ytick.minor.width': 0.35,
-
-        # --- Keep text as editable text in vector exports (not outlined paths) ---
-        'pdf.fonttype': 42,
-        'ps.fonttype': 42,
-        'svg.fonttype': 'none',
-
-        # --- Resolution / export ---
-        'figure.dpi': 150,          # screen preview only
-        'savefig.dpi': 300,         # within AGU's 300-600 ppi raster range
-        'savefig.bbox': 'tight',
-        'savefig.pad_inches': 0.02,
-    }
-}
-plt.rcParams.update(plt.rcParamsDefault)
-plt.rcParams.update(STYLES[STYLE])
+apply_plot_style(STYLE, font_size=8)
+if STYLE == 'AGU':
+    plt.rcParams.update({'savefig.bbox': 'tight', 'savefig.pad_inches': 0.02})
 
 # helper for per-element color (colorbar ticks etc.)
 _tc = plt.rcParams['text.color']
@@ -113,26 +68,18 @@ APPEND_VARIABLES = True
 
 #%%
 base_directory = Path(r"U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian")
-config = f"Model_Output/Q{DISCHARGE}"
-base_path = base_directory / config #Path(r"U:\PhDNaturalRhythmEstuaries\Models\1_RiverDischargeVariability_domain45x15\Model_Output\Q500\0_Noise_Q500") 
 
-assessment_dir = base_path / 'cached_data'
-
-timed_out_dir = base_path / "timed-out"
-if not base_path.exists():
-    raise FileNotFoundError(f"Base path not found: {base_path}")
-if not timed_out_dir.exists():
-    timed_out_dir = None
-    print('[WARNING] Timed-out directory not found. No timed-out scenarios will be included.')
-    #raise FileNotFoundError(f"Timed-out directory not found: {timed_out_dir}")
-
-VARIABILITY_MAP = get_variability_map(DISCHARGE)
-model_folders = find_variability_model_folders(
-    base_path=base_path,
+run_context = setup_variability_run_context(
+    base_directory=base_directory,
     discharge=DISCHARGE,
     scenarios_to_process=SCENARIOS_TO_PROCESS,
     analyze_noisy=False,
 )
+base_path = run_context['base_path']
+assessment_dir = run_context['cache_dir']
+timed_out_dir = run_context['timed_out_dir']
+VARIABILITY_MAP = run_context['variability_map']
+model_folders = run_context['model_folders']
 
 configs = {
     'mesh2d_mor_bl': {
@@ -158,74 +105,6 @@ configs = {
     }
 }
 
-
-#%%
-def build_centerline_reference(ds, var_name, reference_time_idx, xmin, xmax, centerline_y):
-    """
-    Build a per-face reference array for detrending, derived from the
-    centerline bed-level profile at the reference timestep (t=0), sampled
-    along a known/fixed centerline y-coordinate.
-
-    For each unique x in [xmin, xmax], the reference value is the t=0 bed
-    level of the face whose y-coordinate is closest to `centerline_y` in
-    that x-column. This is interpolated to every face's own x-coordinate.
-    Faces with x outside [xmin, xmax] get NaN (no extrapolation), so areas
-    where the reference is not meaningful (e.g. the sea basin seaward of
-    the estuary mouth) are left unplotted rather than clamped to an edge
-    value.
-
-    Note: this only samples the *initial* (t=0) geometry to build the
-    reference profile. Any land masking for a given timestep should be
-    applied to the data being detrended (at that timestep), not here -
-    see the main loop, where the current-timestep land mask is applied
-    BEFORE subtracting this reference, so that cells which have eroded
-    from land into estuary between t=0 and t=time are correctly included.
-    """
-    if 'mesh2d_face_x' not in ds or 'mesh2d_face_y' not in ds:
-        raise ValueError("Dataset is missing mesh2d_face_x/mesh2d_face_y; cannot build centerline reference.")
-
-    face_x = np.asarray(ds['mesh2d_face_x'].values)
-    face_y = np.asarray(ds['mesh2d_face_y'].values)
-    reference_bed_full = np.asarray(ds[var_name].isel(time=reference_time_idx).values)
-
-    in_range = (face_x >= xmin) & (face_x <= xmax)
-    if not np.any(in_range):
-        raise ValueError(f"No faces found with x in [{xmin}, {xmax}]; cannot build centerline reference.")
-
-    x_in = face_x[in_range]
-    y_in = face_y[in_range]
-    bed_in = reference_bed_full[in_range]
-
-    # For each unique x, pick the face whose y is closest to centerline_y.
-    # Sort primarily by x (ascending), secondarily by distance to
-    # centerline_y (ascending), so the first entry within each x-group is
-    # the closest-to-centerline face for that column.
-    y_dist = np.abs(y_in - centerline_y)
-    order = np.lexsort((y_dist, x_in))
-    x_ord = x_in[order]
-    bed_ord = bed_in[order]
-    unique_x, first_idx = np.unique(x_ord, return_index=True)
-    centerline_bed = bed_ord[first_idx]
-
-    # Interpolate the t=0 centerline profile to every face's x-coordinate.
-    # Faces with x outside [xmin, xmax] get NaN (left unplotted), not
-    # clamped to an edge value.
-    reference_per_face = np.full(face_x.shape, np.nan)
-    reference_per_face[in_range] = np.interp(x_in, unique_x, centerline_bed)
-    return reference_per_face
-
-def compute_map_figsize(xlim, ylim, width_mm=FIGURE_WIDTH_MM, cbar_frac=CBAR_WIDTH_FRACTION):
-    """Derive (width_in, height_in) from data aspect ratio so an equal-aspect
-    map fills the frame at the target AGU print width, with space reserved
-    for the colorbar."""
-    x_span = xlim[1] - xlim[0]
-    y_span = ylim[1] - ylim[0]
-    aspect = y_span / x_span
-
-    fig_width_in = width_mm * MM_TO_IN
-    map_width_in = fig_width_in * cbar_frac
-    fig_height_in = map_width_in * aspect
-    return (fig_width_in, fig_height_in)
 
 #%%
 # =============================================================================
@@ -355,7 +234,7 @@ for folder in model_folders:
                 
                 current_xlim = ZOOM_XLIM if ZOOM else (CACHE_BBOX[0], CACHE_BBOX[2])
                 current_ylim = ZOOM_YLIM if ZOOM else (CACHE_BBOX[1], CACHE_BBOX[3])
-                figsize = compute_map_figsize(current_xlim, current_ylim)
+                figsize = compute_map_figsize(current_xlim, current_ylim, FIGURE_WIDTH_MM, CBAR_WIDTH_FRACTION)
                 fig, ax = plt.subplots(figsize=figsize)
 
                 #fig, ax = plt.subplots(figsize=(12, 8))

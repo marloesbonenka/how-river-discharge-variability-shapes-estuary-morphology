@@ -23,7 +23,6 @@ Styling notes:
 """
 
 # %% Imports
-import sys
 from pathlib import Path
 
 import cmocean                          # noqa: F401  (kept for colourmap consistency)
@@ -32,10 +31,9 @@ import matplotlib.ticker as mticker
 import matplotlib.colors as mcolors
 import numpy as np
 
-sys.path.append(r"c:\Users\marloesbonenka\Nextcloud\Python\01_Delft3D-FM\02_Postprocessing")
-
 from functions.F_map_cache import cache_tag_from_bbox, load_or_update_map_cache_multi
 from functions.F_loaddata import get_stitched_map_run_paths
+from functions.F_general import apply_plot_style, add_direct_labels, add_fill_label, strip_top_right_spines
 
 # ---------------------------------------------------------------------------
 # CONFIGURATION
@@ -107,126 +105,8 @@ LABEL_MARGIN_FRAC = 0.16
 
 FONTSIZE = 11
 
-AGU_RC = {
-    'font.size': FONTSIZE,
-    'font.family': 'sans-serif',
-    'font.sans-serif': ['Calibri', 'Helvetica', 'DejaVu Sans'],
-    'axes.labelsize': FONTSIZE,
-    'axes.titlesize': FONTSIZE,
-    'xtick.labelsize': FONTSIZE - 1,
-    'ytick.labelsize': FONTSIZE - 1,
-    'legend.fontsize': FONTSIZE - 1,
-    'figure.titlesize': FONTSIZE + 1,
-    'mathtext.fontset': 'custom',
-    'mathtext.rm': 'Calibri',
-    'mathtext.it': 'Calibri:italic',
-    'mathtext.bf': 'Calibri:bold',
+apply_plot_style('AGU', font_size=FONTSIZE, tick_delta=-1)
 
-    # --- Line weights: avoid hairlines (AGU rejects anything under 0.5pt) ---
-    'axes.linewidth': 0.5,
-    'lines.linewidth': 0.75,
-    'grid.linewidth': 0.4,
-    'xtick.major.width': 0.5,
-    'ytick.major.width': 0.5,
-    'xtick.minor.width': 0.35,
-    'ytick.minor.width': 0.35,
-
-    # --- Keep text as editable text in vector exports (not outlined paths) ---
-    'pdf.fonttype': 42,
-    'ps.fonttype': 42,
-    'svg.fonttype': 'none',
-
-    # --- Resolution / export ---
-    'figure.dpi': 150,          # screen preview only
-    'savefig.dpi': 300,         # within AGU's 300-600 ppi raster range
-}
-plt.rcParams.update(plt.rcParamsDefault)
-plt.rcParams.update(AGU_RC)
-
-#%% ---------------------------------------------------------------------------
-# DIRECT-LABEL HELPERS (replace fig.legend() calls)
-# ---------------------------------------------------------------------------
-
-def add_direct_labels(ax, curves, min_sep_frac=0.09, x_offset=6):
-    """Label each line directly to the right of its endpoint instead of using a
-
-    legend.
-
-    Parameters
-    ----------
-    ax : matplotlib Axes
-    curves : list of (x_data, y_data, text, color) tuples
-    min_sep_frac : minimum vertical spacing between labels (fraction of y-range)
-    x_offset : horizontal distance in points between line end and label
-    """
-    entries = []
-    for x_data, y_data, text, color in curves:
-        finite = np.isfinite(y_data)
-        if not finite.any():
-            continue
-        entries.append([x_data[finite][-1], y_data[finite][-1], text, color])
-
-    if not entries:
-        return
-
-    # Sort and adjust vertical positions to prevent overlaps
-    y_lo, y_hi = ax.get_ylim()
-    min_gap = min_sep_frac * (y_hi - y_lo)
-
-    entries.sort(key=lambda e: e[1])
-    for i in range(1, len(entries)):
-        if entries[i][1] - entries[i - 1][1] < min_gap:
-            entries[i][1] = entries[i - 1][1] + min_gap
-
-    label_bbox = dict(
-        boxstyle="round,pad=0.15",
-        facecolor="white",
-        edgecolor="none",
-        alpha=0.75,
-    )
-
-    for x_end, y_end, text, color in entries:
-        ax.annotate(
-            text,
-            xy=(x_end, y_end),
-            xytext=(x_offset, 0),  # Positive offset shifts text to the right
-            textcoords="offset points",
-            color=color,
-            ha="left",  # Left-aligned anchor places text extending rightward
-            va="center",
-            bbox=label_bbox,
-            clip_on=False,  # Allows label to draw outside the main axes boundary
-        )
-
-    # Optional: Automatically pad the right x-margin so labels have space inside the figure
-    ax.set_xmargin(0.1)
- 
- 
-def add_fill_label(ax, x_data, y_lower, y_upper, text, color):
-    """Place a label inside a fill_between region, centred on its x-extent."""
-    finite = np.isfinite(y_lower) & np.isfinite(y_upper)
-    if not finite.any():
-        return
-    xf = x_data[finite]
-    yl = y_lower[finite]
-    yu = y_upper[finite]
- 
-    x_mid = 0.355 * (xf.min() + xf.max())
-    idx = np.argmin(np.abs(xf - x_mid))
- 
-    ax.text(
-        xf[idx], 0.5 * (yl[idx] + yu[idx]),
-        text, color=color, ha='center', va='center', style='italic',
-        bbox=dict(boxstyle='round,pad=0.15', facecolor='white', edgecolor='none', alpha=0.7),
-        clip_on=True,
-    )
- 
- 
-def strip_top_right_spines(*axes):
-    for ax in axes:
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
- 
 #%% ---------------------------------------------------------------------------
 # BIN EDGES
 # ---------------------------------------------------------------------------

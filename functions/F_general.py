@@ -3,35 +3,323 @@ import pandas as pd
 import os
 import re
 from pathlib import Path
+import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 
 #%%
+# =============================================================================
+# FIGURE STYLE HELPERS
+# =============================================================================
+
+def get_agu_rc(font_size=8, title_delta=1, tick_delta=0, mathtext_font='Calibri'):
+    """AGU-compliant rcParams: Calibri font, hairline-free line weights (AGU
+    rejects < 0.5pt), editable vector text, and 300-600 ppi export.
+
+    Parameters
+    ----------
+    font_size : base font size for text, axes labels/titles and ticks.
+    title_delta : offset added to font_size for figure.titlesize.
+    tick_delta : offset added to font_size for tick/legend labels (e.g. -1 to
+        make ticks slightly smaller than axis labels).
+    """
+    tick_size = font_size + tick_delta
+    return {
+        'font.size': font_size,
+        'font.family': 'sans-serif',
+        'font.sans-serif': ['Calibri', 'Helvetica', 'DejaVu Sans'],
+        'axes.labelsize': font_size,
+        'axes.titlesize': font_size,
+        'xtick.labelsize': tick_size,
+        'ytick.labelsize': tick_size,
+        'legend.fontsize': tick_size,
+        'figure.titlesize': font_size + title_delta,
+        'mathtext.fontset': 'custom',
+        'mathtext.rm': mathtext_font,
+        'mathtext.it': f'{mathtext_font}:italic',
+        'mathtext.bf': f'{mathtext_font}:bold',
+
+        # --- Line weights: avoid hairlines (AGU rejects anything under 0.5pt) ---
+        'axes.linewidth': 0.5,
+        'lines.linewidth': 0.75,
+        'grid.linewidth': 0.4,
+        'xtick.major.width': 0.5,
+        'ytick.major.width': 0.5,
+        'xtick.minor.width': 0.35,
+        'ytick.minor.width': 0.35,
+
+        # --- Keep text as editable text in vector exports (not outlined paths) ---
+        'pdf.fonttype': 42,
+        'ps.fonttype': 42,
+        'svg.fonttype': 'none',
+
+        # --- Resolution / export ---
+        'figure.dpi': 150,          # screen preview only
+        'savefig.dpi': 300,         # within AGU's 300-600 ppi raster range
+    }
+
+
+# Transparent figure / white text-and-axes style, for slide/poster backgrounds.
+WHITEFIG_RC = {
+    'figure.facecolor':    'none',
+    'axes.facecolor':      'none',
+    'axes.edgecolor':      'white',
+    'axes.labelcolor':     'white',
+    'xtick.color':         'white',
+    'ytick.color':         'white',
+    'text.color':          'white',
+    'grid.color':          'white',
+    'legend.facecolor':    'none',
+    'legend.edgecolor':    'white',
+    'savefig.transparent': True,
+}
+
+
+def apply_plot_style(style='AGU', font_size=8, title_delta=1, tick_delta=0, **rc_overrides):
+    """Reset rcParams to matplotlib defaults, then apply a named figure style.
+
+    Parameters
+    ----------
+    style : 'default' (matplotlib defaults), 'whitefig' (transparent figure,
+        white text/axes), or 'AGU' (Calibri, AGU submission specs).
+    font_size, title_delta, tick_delta : forwarded to get_agu_rc() when
+        style='AGU'.
+    rc_overrides : any extra rcParams to apply on top (e.g. to tweak one or
+        two entries of the 'whitefig' style per script).
+    """
+    plt.rcParams.update(plt.rcParamsDefault)
+    if style == 'AGU':
+        plt.rcParams.update(get_agu_rc(font_size=font_size, title_delta=title_delta, tick_delta=tick_delta))
+    elif style == 'whitefig':
+        plt.rcParams.update(WHITEFIG_RC)
+    elif style != 'default':
+        raise ValueError(f"Unknown style '{style}'. Choose 'default', 'whitefig', or 'AGU'.")
+    if rc_overrides:
+        plt.rcParams.update(rc_overrides)
+
+
+def compute_map_figsize(xlim, ylim, width_mm, cbar_frac, mm_to_in=1 / 25.4):
+    """Derive (width_in, height_in) from data aspect ratio so an equal-aspect
+    map fills the frame at the target print width, with space reserved for
+    the colorbar."""
+    x_span = xlim[1] - xlim[0]
+    y_span = ylim[1] - ylim[0]
+    aspect = y_span / x_span
+
+    fig_width_in = width_mm * mm_to_in
+    map_width_in = fig_width_in * cbar_frac
+    fig_height_in = map_width_in * aspect
+    return (fig_width_in, fig_height_in)
+
+
+def add_direct_labels(ax, curves, min_sep_frac=0.09, x_offset=6):
+    """Label each line directly to the right of its endpoint instead of using
+    a legend.
+
+    Parameters
+    ----------
+    ax : matplotlib Axes
+    curves : list of (x_data, y_data, text, color) tuples
+    min_sep_frac : minimum vertical spacing between labels (fraction of y-range)
+    x_offset : horizontal distance in points between line end and label
+    """
+    entries = []
+    for x_data, y_data, text, color in curves:
+        finite = np.isfinite(y_data)
+        if not finite.any():
+            continue
+        entries.append([x_data[finite][-1], y_data[finite][-1], text, color])
+
+    if not entries:
+        return
+
+    # Sort and adjust vertical positions to prevent overlaps
+    y_lo, y_hi = ax.get_ylim()
+    min_gap = min_sep_frac * (y_hi - y_lo)
+
+    entries.sort(key=lambda e: e[1])
+    for i in range(1, len(entries)):
+        if entries[i][1] - entries[i - 1][1] < min_gap:
+            entries[i][1] = entries[i - 1][1] + min_gap
+
+    label_bbox = dict(
+        boxstyle="round,pad=0.15",
+        facecolor="white",
+        edgecolor="none",
+        alpha=0.75,
+    )
+
+    for x_end, y_end, text, color in entries:
+        ax.annotate(
+            text,
+            xy=(x_end, y_end),
+            xytext=(x_offset, 0),  # Positive offset shifts text to the right
+            textcoords="offset points",
+            color=color,
+            ha="left",  # Left-aligned anchor places text extending rightward
+            va="center",
+            bbox=label_bbox,
+            clip_on=False,  # Allows label to draw outside the main axes boundary
+        )
+
+    # Optional: Automatically pad the right x-margin so labels have space inside the figure
+    ax.set_xmargin(0.1)
+
+
+def add_fill_label(ax, x_data, y_lower, y_upper, text, color):
+    """Place a label inside a fill_between region, centred on its x-extent."""
+    finite = np.isfinite(y_lower) & np.isfinite(y_upper)
+    if not finite.any():
+        return
+    xf = x_data[finite]
+    yl = y_lower[finite]
+    yu = y_upper[finite]
+
+    x_mid = 0.355 * (xf.min() + xf.max())
+    idx = np.argmin(np.abs(xf - x_mid))
+
+    ax.text(
+        xf[idx], 0.5 * (yl[idx] + yu[idx]),
+        text, color=color, ha='center', va='center', style='italic',
+        bbox=dict(boxstyle='round,pad=0.15', facecolor='white', edgecolor='none', alpha=0.7),
+        clip_on=True,
+    )
+
+
+def strip_top_right_spines(*axes):
+    for ax in axes:
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+
+
+# =============================================================================
+# TIME WINDOW HELPERS
+# =============================================================================
+
+def get_last_n_hours_window(time_values, n_hours):
+    """Boolean mask selecting the last n_hours of a datetime64 array."""
+    t_end = time_values[-1]
+    t_start = t_end - np.timedelta64(int(n_hours * 3600), 's')
+    return time_values >= t_start
+
+
+def get_last_n_days_window(time_values, n_days):
+    """(t_start, t_end) covering the last n_days of a datetime64 array."""
+    t_end = time_values[-1]
+    t_start = t_end - np.timedelta64(int(n_days * 24 * 3600), 's')
+    return t_start, t_end
+
+
+# =============================================================================
+# SCENARIO / RUN FOLDER DISCOVERY
+# =============================================================================
+
+# Matches: dhr_{run_id}_Qr{Q}_pm{pm}_n{n}[_mean].{runid}
+DHR_FOLDER_RE = re.compile(r'^dhr_(\d{2})_Qr(\d+)_pm(\d+)_n(\d+)(?:_mean)?\.\d+$')
+
+
+def discover_variability_scenario_folders(dhr_base, discharge, run_ids_to_include=None, folder_regex=DHR_FOLDER_RE):
+    """Find dhr_XX_Qr{discharge}_pm{pm}_n{n}[_mean].{runid}-style folders
+    under `dhr_base`, optionally restricted to `run_ids_to_include`.
+
+    Returns a list of (folder_path, run_id, pm_val, n_val) tuples.
+    """
+    dhr_base = Path(dhr_base)
+    results = []
+    if not dhr_base.exists():
+        return results
+    for folder in sorted(dhr_base.iterdir()):
+        if not folder.is_dir():
+            continue
+        m = folder_regex.match(folder.name)
+        if not m:
+            continue
+        run_id, q_val, pm_val, n_val = (int(g) for g in m.groups())
+        if run_ids_to_include is not None and run_id not in run_ids_to_include:
+            continue
+        if q_val != discharge:
+            continue
+        results.append((folder, run_id, pm_val, n_val))
+    return results
+
+
+def find_run_folder_by_qpmn(search_dir, discharge, pm, n, folder_regex, sort_key=None):
+    """Find the single run folder under `search_dir` whose name matches
+    `folder_regex` (capture groups 1-3 = discharge, pm, n) for the given
+    (discharge, pm, n). Raises FileNotFoundError if none match."""
+    search_dir = Path(search_dir)
+    candidates = []
+    for f in search_dir.iterdir():
+        if not f.is_dir():
+            continue
+        m = folder_regex.match(f.name)
+        if not m:
+            continue
+        q_val, pm_val, n_val = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        if q_val == discharge and pm_val == pm and n_val == n:
+            candidates.append(f)
+    if not candidates:
+        raise FileNotFoundError(
+            f"No folder found for Q={discharge}, pm={pm}, n={n} in {search_dir}"
+        )
+    candidates.sort(key=sort_key or (lambda x: x.name))
+    return candidates[0]
+
+
+# =============================================================================
+# RUN CONTEXT (base path / cache dir / timed-out dir / model folders)
+# =============================================================================
+
+def resolve_timed_out_dir(base_path, timed_out_dir=None):
+    """Return the timed-out directory Path if it exists, else None (with a
+    warning printed once)."""
+    timed_out_dir = Path(timed_out_dir) if timed_out_dir is not None else Path(base_path) / "timed-out"
+    if not timed_out_dir.exists():
+        print('[WARNING] Timed-out directory not found. No timed-out scenarios will be included.')
+        return None
+    return timed_out_dir
+
+
+def setup_variability_run_context(base_directory, discharge, config_subdir="Model_Output",
+                                   scenarios_to_process=None, analyze_noisy=False,
+                                   noisy_subdir_template="0_Noise_Q{discharge}"):
+    """Resolve the standard variability-run folder layout used across the
+    postprocessing scripts: base_path, cache dir, timed-out dir, variability
+    map, and the matching model folders.
+
+    Returns a dict with keys: base_path, cache_dir, timed_out_dir,
+    variability_map, model_folders.
+    """
+    base_directory = Path(base_directory)
+    base_path = base_directory / f"{config_subdir}/Q{discharge}"
+    if analyze_noisy:
+        base_path = base_path / noisy_subdir_template.format(discharge=discharge)
+
+    if not base_path.exists():
+        raise FileNotFoundError(f"Base path not found: {base_path}")
+
+    cache_dir = base_path / "cached_data"
+    timed_out_dir = resolve_timed_out_dir(base_path)
+    variability_map = get_variability_map(discharge)
+    model_folders = find_variability_model_folders(
+        base_path=base_path, discharge=discharge,
+        scenarios_to_process=scenarios_to_process, analyze_noisy=analyze_noisy,
+    )
+
+    return {
+        'base_path': base_path,
+        'cache_dir': cache_dir,
+        'timed_out_dir': timed_out_dir,
+        'variability_map': variability_map,
+        'model_folders': model_folders,
+    }
+
+
 def _parse_pm_n(label_str):
     """Extract (pm, n) ints from a label like 'pm3_n5' or 'pm1_n0 (constant)'."""
     m = re.match(r'pm(\d+)_n(\d+)', label_str.strip())
     if m:
         return int(m.group(1)), int(m.group(2))
     return None, None
-
-# --- CHECK VARIABLES IN DELFT3D OUTPUT ---
-def check_available_variables_xarray(ds):
-    """Updated for xarray/dfm_tools datasets"""
-    print("Available variables in dataset:\n")
-    # xarray uses ds.data_vars for the main variables
-    for var_name in sorted(ds.data_vars):
-        var = ds[var_name]
-        print(f"  {var_name}:")
-        print(f"    shape         = {var.shape}")
-        print(f"    dimensions    = {var.dims}")
-        
-        # xarray stores metadata in the .attrs dictionary
-        for attr in ['units', 'long_name', 'standard_name', 'description']:
-            if attr in var.attrs:
-                print(f"    {attr:13} = {var.attrs[attr]}")
-        
-        print("") 
-
-    return {'all_vars': list(ds.data_vars)}
 
 # --- EXTRACT MORFAC FROM FOLDER NAME ---
 def get_mf_number(folder_name):
@@ -111,46 +399,6 @@ def find_variability_model_folders(base_path, discharge, scenarios_to_process=No
 
     return model_folders
 
-# --- EXTRACT COMPUTATION TIME FROM .dia FILE ---
-def extract_computation_time(dia_file_path):
-    """
-    Extract computation time in days and hours from FlowFM_0000.dia file.
-    Returns tuple: (days, hours) or (None, None) if not found.
-    """
-    try:
-        with open(dia_file_path, 'r', encoding='utf-8', errors='ignore') as f:
-            lines = f.readlines()
-            
-        comp_time_days = None
-        comp_time_hours = None
-        
-        for line in lines:
-            if 'total computation time (d)' in line:
-                # Extract the number from the line
-                # Example: "** INFO   : total computation time (d)  :             4.6385087087"
-                parts = line.split(':')
-                if len(parts) >= 3:  # There are multiple colons
-                    # Take the last part after the last colon
-                    try:
-                        comp_time_days = float(parts[-1].strip())
-                    except ValueError:
-                        pass
-                        
-            elif 'total computation time (h)' in line:
-                parts = line.split(':')
-                if len(parts) >= 3:
-                    try:
-                        comp_time_hours = float(parts[-1].strip())
-                    except ValueError:
-                        pass
-        
-        return comp_time_days, comp_time_hours
-    
-    except Exception as e:
-        print(f"    Warning: Could not read .dia file: {e}")
-        return None, None
-    
-
 # --- CUSTOM COLORMAP ---
 def create_terrain_colormap():
     colors = [
@@ -159,30 +407,6 @@ def create_terrain_colormap():
         (0.75, "#ffd000"), (0.90, "#228B22"), (1.00, "#006400"),
     ]
     return LinearSegmentedColormap.from_list("custom_terrain", colors)
-
-def create_detrended_blev_colormap():
-    colors = [
-        (0.00, "#000066"),  # deep navy
-        (0.15, "#0000ff"),  # pure blue
-        (0.35, "#00ccff"),  # cyan-blue
-        (0.46, "#aaeeff"),  # pale cyan
-        (0.50, "#ffffff"),  # white — zero
-        (0.54, "#ffffaa"),  # pale yellow
-        (0.65, "#ffdd00"),  # yellow
-        (0.85, "#ffcc00"),  # gold
-        (1.00, "#cc9900"),  # deep gold
-    ]
-    return LinearSegmentedColormap.from_list(
-        "tidal_diverging", colors
-    )
-
-def create_bedlevel_colormap():
-    colors = [
-        (0.00, "#000066"), (0.10, "#0000ff"), (0.30, "#00ffff"),
-        (0.40, "#00ffff"), (0.50, "#ffffcc"), (0.60, "#ffcc00"),
-        (0.75, "#cc6600"), (0.90, "#228B22"), (1.00, "#006400"),
-    ]
-    return LinearSegmentedColormap.from_list("custom_bedlevel", colors)
 
 def create_water_colormap():
     # Highlights shallow areas (light) to deep channels (dark)
@@ -208,40 +432,6 @@ def create_shear_stress_colormap():
     ]
     return LinearSegmentedColormap.from_list("custom_shear", colors)
 
-# --- MORPHOLOGICAL TIME SELECTION ---
-def find_timestep_for_target_morphtime(ds, target_morph_years, start_date):
-    """
-    Find the timestep where morphological time reaches the target.
-    Calculates: morph_time = hydro_time_elapsed * morfac
-    """
-    start_timestamp = pd.Timestamp(start_date)
-    times = pd.to_datetime(ds['time'].values)
-    
-    # Calculate elapsed hydrodynamic time in years for each timestep
-    hydro_elapsed_years = np.array([(t - start_timestamp).days / 365.25 for t in times])
-    
-    # Get MORFAC values at each timestep
-    if 'morfac' in ds:
-        morfac_values = ds['morfac'].values
-    else:
-        raise ValueError("MORFAC variable not found in dataset")
-    
-    # Calculate morphological time at each timestep: morph_time = hydro_time * morfac
-    morph_time_years = hydro_elapsed_years * morfac_values
-    
-    # Find closest timestep to target morphological time
-    time_diffs = np.abs(morph_time_years - target_morph_years)
-    closest_idx = int(np.argmin(time_diffs))
-    
-    actual_morph_years = morph_time_years[closest_idx]
-    actual_hydro_years = hydro_elapsed_years[closest_idx]
-    actual_morfac = morfac_values[closest_idx]
-    actual_time = times[closest_idx]
-    
-    return closest_idx, actual_time, actual_hydro_years, actual_morph_years, actual_morfac
-
-
-
 # Convert a datetime64 value to a compact YYYYMMDD string for filenames.
 def _date_to_filename_tag(dt64):
     return str(np.datetime_as_string(dt64, unit='D')).replace('-', '')
@@ -264,27 +454,6 @@ def _scenario_key_from_folder(folder_name):
 def _scenario_label(folder_name, scenario_labels_dict):
     key = _scenario_key_from_folder(folder_name)
     return scenario_labels_dict.get(key, str(folder_name))
-
-
-# Resolve the plotting color for a scenario based on its folder name.
-# Falls back to a deterministic tab20 color (based on scenario number) instead of grey.
-def _scenario_color(folder_name, scenario_colors_dict):
-    import matplotlib.pyplot as plt
-    key = _scenario_key_from_folder(folder_name)
-    if key in scenario_colors_dict:
-        return scenario_colors_dict[key]
-    try:
-        idx = int(key)
-    except (ValueError, TypeError):
-        idx = abs(hash(str(key))) % 20
-    return plt.get_cmap('tab20')(idx % 20)
-
-
-# Build a legend entry that includes both scenario name and folder identifier.
-def _scenario_legend_label(folder_name, scenario_labels_dict):
-    key = _scenario_key_from_folder(folder_name)
-    base = scenario_labels_dict.get(key, key)
-    return f"{base} ({folder_name})"
 
 
 # Generate hydrodynamic target snapshot dates, either explicit or evenly spaced in a range.
@@ -349,16 +518,4 @@ def stack_metric_arrays(run_items, metric_key):
     if not arrays:
         return None
     return np.vstack(arrays)
-
-
-# Plot a mean line and optional min-max envelope for a stacked metric.
-def draw_metric_with_optional_envelope(ax, x, y_stack, color, label, add_envelope=False, marker=None, linestyle='-'):
-    if y_stack is None:
-        return
-    y_center = np.nanmean(y_stack, axis=0)
-    if add_envelope and y_stack.shape[0] > 1:
-        y_min = np.nanmin(y_stack, axis=0)
-        y_max = np.nanmax(y_stack, axis=0)
-        ax.fill_between(x, y_min, y_max, color=color, alpha=0.18)
-    ax.plot(x, y_center, color=color, linewidth=2, label=label, marker=marker, ms=3, linestyle=linestyle)
 

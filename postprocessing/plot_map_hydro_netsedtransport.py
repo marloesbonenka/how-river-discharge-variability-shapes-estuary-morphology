@@ -33,8 +33,10 @@ import matplotlib.gridspec as gridspec
 from matplotlib.ticker import FuncFormatter
 import cmocean
 
-from functions.F_map_cache import cache_tag_from_bbox, load_or_update_map_cache_multi, select_cache_path
+from functions.F_map_cache import cache_tag_from_bbox, load_or_update_map_cache_multi, resolve_cache_folder_label
 from functions.F_loaddata import get_stitched_map_run_paths
+from functions.F_general import apply_plot_style, find_run_folder_by_qpmn
+from functions.F_sedimentbuffers import compute_net_along_flow_transport
 
 # %% --- 1. SETTINGS ---
 BASE_DIR = Path(r"U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output")
@@ -54,41 +56,7 @@ MM_TO_IN = 1 / 25.4
 FIGURE_WIDTH_MM = 170          # AGU full-page width, since we need 2 columns + colorbar
 CBAR_WIDTH_FRACTION = 0.03     # fraction of total width reserved for the shared colorbar
 
-AGU_RC = {
-    'font.size': 8,
-    'font.family': 'sans-serif',
-    'font.sans-serif': ['Calibri', 'Helvetica', 'DejaVu Sans'],
-    'axes.labelsize': 8,
-    'axes.titlesize': 8,
-    'xtick.labelsize': 8,
-    'ytick.labelsize': 8,
-    'legend.fontsize': 8,
-    'figure.titlesize': 9,
-    'mathtext.fontset': 'custom',
-    'mathtext.rm': 'Calibri',
-    'mathtext.it': 'Calibri:italic',
-    'mathtext.bf': 'Calibri:bold',
-
-    # --- Line weights: avoid hairlines (AGU rejects anything under 0.5pt) ---
-    'axes.linewidth': 0.5,
-    'lines.linewidth': 0.75,
-    'grid.linewidth': 0.4,
-    'xtick.major.width': 0.5,
-    'ytick.major.width': 0.5,
-    'xtick.minor.width': 0.35,
-    'ytick.minor.width': 0.35,
-
-    # --- Keep text as editable text in vector exports (not outlined paths) ---
-    'pdf.fonttype': 42,
-    'ps.fonttype': 42,
-    'svg.fonttype': 'none',
-
-    # --- Resolution / export ---
-    'figure.dpi': 150,          # screen preview only
-    'savefig.dpi': 300,         # within AGU's 300-600 ppi raster range
-}
-plt.rcParams.update(plt.rcParamsDefault)
-plt.rcParams.update(AGU_RC)
+apply_plot_style('AGU', font_size=8)
 
 # Zoom settings
 ZOOM = True
@@ -112,122 +80,8 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # %% --- 2. HELPERS ---
+# Matches: dhr_{run_id}_Qr{Q}_pm{pm}_n{n}[_mean].{runid}
 _DHR_FOLDER_RE = re.compile(r'^dhr_\d+_Qr(\d+)_pm(\d+)_n(\d+)(?:_mean)?\.\w+$')
-
-
-def find_run_folder(q_base_path, discharge, pm, n):
-    """Find the detailed-hydro-run folder matching a given (discharge, pm, n),
-    e.g. 'dhr_09_Qr500_pm5_n3_mean.10280083' for (discharge=500, pm=5, n=3)."""
-    dhr_dir = q_base_path / 'detailed-hydro-run'
-    candidates = []
-    for f in dhr_dir.iterdir():
-        if not f.is_dir():
-            continue
-        m = _DHR_FOLDER_RE.match(f.name)
-        if not m:
-            continue
-        q_val, pm_val, n_val = int(m.group(1)), int(m.group(2)), int(m.group(3))
-        if q_val == discharge and pm_val == pm and n_val == n:
-            candidates.append(f)
-    if not candidates:
-        raise FileNotFoundError(
-            f"No detailed-hydro-run folder found for Q={discharge}, pm={pm}, n={n} in {dhr_dir}"
-        )
-    candidates.sort(key=lambda x: int(x.name.split('_')[1]))
-    return candidates[0]
-
-
-def resolve_cache_folder_label(cache_dir, real_folder_name, var_names, cache_tag):
-    """Some existing caches were written with '_mean' inserted into the
-    folder label even though the real run folder itself has no '_mean'
-    suffix (e.g. Q250/Q500 constant-discharge runs). If the cache for the
-    real folder name is missing but a '_mean'-labeled cache exists (for all
-    requested variables), reuse that label so the existing cache is picked
-    up instead of triggering an unnecessary rebuild."""
-    candidates = [real_folder_name]
-    if '_mean' not in real_folder_name and '.' in real_folder_name:
-        stem, _, run_id = real_folder_name.rpartition('.')
-        candidates.append(f"{stem}_mean.{run_id}")
-
-    for candidate in candidates:
-        cache_paths = [select_cache_path(cache_dir, candidate, v, cache_tag) for v in var_names]
-        if all(p.exists() for p in cache_paths):
-            return candidate
-    return real_folder_name
-
-
-def compute_net_along_flow_transport(ds, window_hours, min_velocity):
-    """Compute the time-averaged, flood/ebb-signed, along-flow sediment
-    transport over the last `window_hours` of the dataset. Returns a
-    (net_da, actual_window_hours) tuple."""
-    if 'time' not in ds.dims or len(ds.time) == 0:
-        raise ValueError("No time dimension in dataset.")
-    if 'mesh2d_sxtot' not in ds or 'mesh2d_sytot' not in ds:
-        raise ValueError("Sediment transport components not found in dataset.")
-    if 'mesh2d_ucx' not in ds or 'mesh2d_ucy' not in ds:
-        raise ValueError(
-            "Velocity components (mesh2d_ucx/ucy) not found in dataset — "
-            "required for local flood/ebb direction projection."
-        )
-
-    time_values = np.asarray(ds.time.values).astype('datetime64[ns]')
-    print(f"  Total timesteps: {len(time_values)}  ({time_values[0]} \u2192 {time_values[-1]})")
-
-    # --- Select last window_hours of data ---
-    t_end = time_values[-1]
-    t_start = t_end - np.timedelta64(int(window_hours * 3600), 's')
-    window_mask = time_values >= t_start
-    n_window = int(window_mask.sum())
-    if n_window < 2:
-        raise ValueError(f"Not enough timesteps in last {window_hours}h window (found {n_window}).")
-
-    print(f"  Using last {window_hours}h: {n_window} timesteps "
-          f"({time_values[window_mask][0]} \u2192 {time_values[window_mask][-1]})")
-
-    actual_window_hours = (time_values[window_mask][-1] - time_values[window_mask][0]) / np.timedelta64(1, 'h')
-    if actual_window_hours < 11.0:   # less than ~1 M2 cycle (12h25m)
-        print(f"  [WARNING] Actual available window is only {actual_window_hours:.1f}h — "
-              f"shorter than one tidal cycle. Result will reflect a partial cycle, "
-              f"not a flood/ebb-averaged net transport. Interpret with caution.")
-
-    ds_window = ds.isel(time=np.where(window_mask)[0])
-
-    # --- compute flood/ebb transport magnitude, then time-integrate ---
-    # sxtot/sytot have shape (time, nSedTot, nFaces) -> sum over sediment fractions first
-    sx = ds_window['mesh2d_sxtot'].sum(dim='nSedTot').values   # (n_window, nFaces)
-    sy = ds_window['mesh2d_sytot'].sum(dim='nSedTot').values   # (n_window, nFaces)
-    ucx = ds_window['mesh2d_ucx'].values                        # (n_window, nFaces)
-    ucy = ds_window['mesh2d_ucy'].values                        # (n_window, nFaces)
-
-    u_mag = np.sqrt(ucx**2 + ucy**2)  # velocity magnitude, defines the local flow direction
-
-    # STEP 1 — transport magnitude aligned with the local flow direction.
-    with np.errstate(invalid='ignore', divide='ignore'):
-        transport_mag_along_flow = np.where(
-            u_mag > min_velocity,
-            (sx * ucx + sy * ucy) / np.where(u_mag > 0, u_mag, 1),
-            0.0,
-        )
-    transport_mag_along_flow = np.clip(transport_mag_along_flow, 0.0, None)
-
-    # STEP 2 — assign flood(+)/ebb(-) sign based on whether the flow is
-    # landward or seaward at that instant.
-    flood_ebb_sign = np.sign(ucx)
-    s_along = transport_mag_along_flow * flood_ebb_sign
-
-    # time coordinate in seconds, for trapezoidal integration
-    t_seconds = (ds_window['time'].values - ds_window['time'].values[0]) / np.timedelta64(1, 's')
-    t_seconds = t_seconds.astype(float)
-
-    # Integrate the signed along-flow transport over time -> [m^2] per face over the window
-    net_transport_integrated = np.trapezoid(s_along, x=t_seconds, axis=0)
-
-    # Time-averaged signed along-flow flux over the window [m^2/s], same units as instantaneous sxtot/sytot.
-    elapsed_seconds = t_seconds[-1] - t_seconds[0]
-    net_transport_per_cycle = net_transport_integrated / elapsed_seconds
-
-    net_da = ds_window['mesh2d_sxtot'].isel(time=0, nSedTot=0).copy(data=net_transport_per_cycle)
-    return net_da, actual_window_hours
 
 
 # %% --- 3. FIGURE / GRIDSPEC LAYOUT ---
@@ -282,7 +136,11 @@ pc = None
 for r, c, q, pm, n, title in panel_defs:
     ax = axes[r, c]
     q_base_path = BASE_DIR / f"Q{q}"
-    folder = find_run_folder(q_base_path, q, pm, n)
+    folder = find_run_folder_by_qpmn(
+        q_base_path / 'detailed-hydro-run', q, pm, n,
+        folder_regex=_DHR_FOLDER_RE,
+        sort_key=lambda x: int(x.name.split('_')[1]),
+    )
     print(f"[row {r}, col {c}] Q={q} pm={pm} n={n} -> {folder.name}")
 
     dhr_base_path = q_base_path / 'detailed-hydro-run'

@@ -33,8 +33,6 @@ adds mesh2d_mor_bl to the same cache entry via append_vars).
 """
 
 # %% IMPORTS
-import re
-import sys
 from pathlib import Path
 
 import numpy as np
@@ -44,9 +42,10 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib.cm import ScalarMappable
 
-sys.path.append(r"c:\Users\marloesbonenka\Nextcloud\Python\01_Delft3D-FM\02_Postprocessing")
-from functions.F_map_cache import cache_tag_from_bbox, load_or_update_map_cache_multi
+from functions.F_map_cache import cache_tag_from_bbox, load_or_update_map_cache_multi, _get_face_coords
 from functions.F_loaddata import get_stitched_map_run_paths
+from functions.F_general import DHR_FOLDER_RE, discover_variability_scenario_folders, get_last_n_hours_window
+from functions.F_hypsometry import classify_intertidal_mask, compute_intertidal_hypsometry
 
 # =============================================================================
 # %% --- CONFIGURATION ---
@@ -59,7 +58,7 @@ RUN_IDS_TO_INCLUDE = {1, 6, 9, 10, 11}
 GREY_CONST = "#7f7f7f"
 
 # Matches: dhr_{run_id}_Qr{Q}_pm{pm}_n{n}[_mean].{runid}   (same as compute_hydro_metrics_allQ.py)
-_FOLDER_RE = re.compile(r'^dhr_(\d{2})_Qr(\d+)_pm(\d+)_n(\d+)(?:_mean)?\.\d+$')
+_FOLDER_RE = DHR_FOLDER_RE
 
 # MAP cache settings -- identical bbox to the intertidal-area / LTI scripts so
 # this reuses the same cache file (append_vars adds mesh2d_mor_bl if missing)
@@ -101,118 +100,11 @@ LINESTYLES = ['-', '--', ':', '-.']
 
 
 # =============================================================================
-# %% --- FOLDER DISCOVERY (same convention as compute_hydro_metrics_allQ.py) ---
+# %% --- INTERTIDAL HYPSOMETRY ---
 # =============================================================================
-
-def discover_scenario_folders(dhr_base, discharge):
-    """Find dhr_XX_Qr{discharge}_pm{pm}_n{n}[_mean].{runid} folders,
-    restricted to RUN_IDS_TO_INCLUDE. Returns list of
-    (folder_path, run_id, pm_val, n_val)."""
-    results = []
-    if not dhr_base.exists():
-        return results
-    for folder in sorted(dhr_base.iterdir()):
-        if not folder.is_dir():
-            continue
-        m = _FOLDER_RE.match(folder.name)
-        if not m:
-            continue
-        run_id = int(m.group(1))
-        q_val = int(m.group(2))
-        pm_val = int(m.group(3))
-        n_val = int(m.group(4))
-        if run_id not in RUN_IDS_TO_INCLUDE or q_val != discharge:
-            continue
-        results.append((folder, run_id, pm_val, n_val))
-    return results
-
-
-# =============================================================================
-# %% --- FACE COORDINATE / WINDOW HELPERS ---
-# =============================================================================
-
-def _get_face_coords(ds):
-    """Robustly extract face_x and face_y from a xugrid UgridDataset."""
-    try:
-        return np.asarray(ds.grids[0].face_x), np.asarray(ds.grids[0].face_y)
-    except Exception:
-        pass
-    try:
-        return np.asarray(ds.grid.face_x), np.asarray(ds.grid.face_y)
-    except Exception:
-        pass
-    try:
-        return np.asarray(ds.coords['mesh2d_face_x']), np.asarray(ds.coords['mesh2d_face_y'])
-    except Exception:
-        pass
-    raise RuntimeError(
-        "Could not extract face_x / face_y from the xugrid dataset. "
-        "Check that face_coordinates are preserved in the cache topology."
-    )
-
-
-def get_last_n_hours_window(time_values, n_hours):
-    """Boolean mask selecting the last n_hours of a datetime64 array."""
-    t_end = time_values[-1]
-    t_start = t_end - np.timedelta64(int(n_hours * 3600), 's')
-    return time_values >= t_start
-
-
-# =============================================================================
-# %% --- INTERTIDAL MASK + HYPSOMETRY ---
-# =============================================================================
-
-def compute_intertidal_mask(ds_window, face_x):
-    """Wet/dry classification over the time window, restricted to the tidal
-    zone in x. Identical logic to compute_intertidal_area() in
-    compute_hydro_metrics_allQ.py, but returns the boolean mask itself so the
-    corresponding bed levels can be pulled out.
-
-    Returns
-    -------
-    intertidal_mask : (n_faces,) bool array
-    """
-    depth_vals = ds_window['mesh2d_waterdepth'].values   # (n_window, n_faces)
-    wet_mask_t = depth_vals > IA_WET_THRESHOLD
-
-    always_wet = wet_mask_t.all(axis=0)
-    always_dry = (~wet_mask_t).all(axis=0)
-    intertidal = ~always_wet & ~always_dry
-
-    in_zone = (face_x >= IA_X_MIN) & (face_x <= IA_X_MAX)
-    return intertidal & in_zone
-
-
-def compute_intertidal_hypsometry(bedlev_vals, ba_vals, intertidal_mask):
-    """Area-weighted, non-dimensional hypsometric curve for the intertidal
-    zone of one scenario.
-
-    Returns
-    -------
-    elev_sorted    : bed level, ascending [m]
-    cum_area_frac  : Ai/Atot, cumulative area up to elev_sorted[i], divided by
-                     the total intertidal area of this scenario -> runs 0->1
-    total_area_m2  : Atot for this scenario [m2] (for cross-checking against
-                     intertidal_area_summary.csv from compute_hydro_metrics_allQ.py)
-    """
-    elev = bedlev_vals[intertidal_mask]
-    area = ba_vals[intertidal_mask]
-
-    valid = np.isfinite(elev) & np.isfinite(area)
-    elev, area = elev[valid], area[valid]
-
-    if elev.size == 0:
-        return np.array([]), np.array([]), 0.0
-
-    order = np.argsort(elev)
-    elev_sorted = elev[order]
-    area_sorted = area[order]
-
-    cum_area = np.cumsum(area_sorted)
-    total_area_m2 = float(cum_area[-1])
-    cum_area_frac = cum_area / total_area_m2
-
-    return elev_sorted, cum_area_frac, total_area_m2
+# classify_intertidal_mask() and compute_intertidal_hypsometry() are shared
+# with compute_hydro_metrics_allQ.py via functions/F_hypsometry.py, so the
+# hypsometry here corresponds exactly to the intertidal area reported there.
 
 
 # =============================================================================
@@ -229,7 +121,7 @@ summary_rows = []   # for the per-scenario total-area CSV
 
 for discharge in DISCHARGES:
     dhr_base = BASE_DIR / f'Q{discharge}' / 'detailed-hydro-run'
-    scenario_folders = discover_scenario_folders(dhr_base, discharge)
+    scenario_folders = discover_variability_scenario_folders(dhr_base, discharge, RUN_IDS_TO_INCLUDE, _FOLDER_RE)
 
     if not scenario_folders:
         print(f'[SKIP] No matching folders in: {dhr_base}')
@@ -290,7 +182,9 @@ for discharge in DISCHARGES:
         else:
             face_x, _ = _get_face_coords(ds)
 
-        intertidal_mask = compute_intertidal_mask(ds_window, face_x)
+        intertidal_mask = classify_intertidal_mask(
+            ds_window, IA_WET_THRESHOLD, IA_X_MIN, IA_X_MAX, face_x=face_x,
+        )
         if not np.any(intertidal_mask):
             print(f'    [SKIP] no intertidal faces found for {label}')
             ds.close()

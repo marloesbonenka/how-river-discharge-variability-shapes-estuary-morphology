@@ -14,15 +14,11 @@ Both sets are also saved as normalised / detrended versions.
 
 #%% IMPORTS
 from pathlib import Path
-import re
 
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
 import matplotlib.patches as mpatches
-import sys
-
-sys.path.append(r"c:\Users\marloesbonenka\Nextcloud\Python\01_Delft3D-FM\02_Postprocessing")
 
 from functions.F_general import (
     _date_to_filename_tag,
@@ -36,6 +32,7 @@ from functions.F_general import (
     sort_scenario_keys,
     group_snapshot_by_scenario,
     stack_metric_arrays,
+    apply_plot_style,
 )
 
 from functions.F_map_cache import cache_tag_from_bbox, load_or_update_map_cache_multi, _get_face_coords
@@ -167,25 +164,14 @@ FONTSIZE_TICKS  = FONTSIZE_LABELS - 2    # tick labels and legend text
 STYLE = 'default'   # 'default'   →  white background, black text
                     # 'whitefig'  →  transparent figure, white axes background, white text
 
-STYLES = {
-    'default': {},
-    'whitefig': {
-        'figure.facecolor':    'none',
-        'axes.facecolor':      'white',
-        'axes.edgecolor':      'white',
-        'axes.labelcolor':     'white',
-        'xtick.color':         'white',
-        'ytick.color':         'white',
-        'text.color':          'white',
-        'grid.color':          '#cccccc',
-        'legend.facecolor':    'none',
-        'legend.edgecolor':    'white',
+if STYLE == 'whitefig':
+    apply_plot_style('whitefig', **{
+        'axes.facecolor': 'white',
+        'grid.color': '#cccccc',
         'savefig.transparent': False,
-    },
-}
-
-plt.rcParams.update(plt.rcParamsDefault)
-plt.rcParams.update(STYLES[STYLE])
+    })
+else:
+    apply_plot_style('default')
 _tc = plt.rcParams['text.color']                        # convenience: text/title color
 _tr = plt.rcParams.get('savefig.transparent', False)    # convenience: transparent flag for savefig
 
