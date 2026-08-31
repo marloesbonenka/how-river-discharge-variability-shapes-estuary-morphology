@@ -5,6 +5,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import cmocean
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root, one level up from appendix/
 
 from functions.F_general import create_water_colormap, create_shear_stress_colormap, create_terrain_colormap
 from functions.F_general import apply_plot_style, compute_map_figsize, setup_variability_run_context

@@ -281,7 +281,7 @@ def resolve_timed_out_dir(base_path, timed_out_dir=None):
 
 def setup_variability_run_context(base_directory, discharge, config_subdir="Model_Output",
                                    scenarios_to_process=None, analyze_noisy=False,
-                                   noisy_subdir_template="0_Noise_Q{discharge}"):
+                                   noisy_subdir_template="0_Noise_Q{discharge}", MORFAC=False):
     """Resolve the standard variability-run folder layout used across the
     postprocessing scripts: base_path, cache dir, timed-out dir, variability
     map, and the matching model folders.
@@ -290,7 +290,12 @@ def setup_variability_run_context(base_directory, discharge, config_subdir="Mode
     variability_map, model_folders.
     """
     base_directory = Path(base_directory)
+
     base_path = base_directory / f"{config_subdir}/Q{discharge}"
+
+    if MORFAC:
+        base_path = base_directory / f"{config_subdir}/Q{discharge}_MORFAC"
+
     if analyze_noisy:
         base_path = base_path / noisy_subdir_template.format(discharge=discharge)
 

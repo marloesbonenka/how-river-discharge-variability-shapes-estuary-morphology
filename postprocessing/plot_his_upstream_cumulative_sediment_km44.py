@@ -14,6 +14,9 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import cmocean
 from scipy import stats
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root, one level up from appendix/
 
 from functions.F_loaddata import load_and_cache_scenario
 from functions.F_general import apply_plot_style, setup_variability_run_context

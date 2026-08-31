@@ -16,6 +16,9 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from matplotlib.ticker import FuncFormatter
 import cmocean
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root, one level up from appendix/
 
 from functions.F_general import create_terrain_colormap, create_water_colormap, create_shear_stress_colormap, apply_plot_style, find_run_folder_by_qpmn
 from functions.F_map_cache import cache_tag_from_bbox, load_or_update_map_cache_multi
