@@ -304,7 +304,6 @@ def setup_variability_run_context(base_directory, discharge, config_subdir="Mode
 
     cache_dir = base_path / "cached_data"
     timed_out_dir = resolve_timed_out_dir(base_path)
-    variability_map = get_variability_map(discharge)
     model_folders = find_variability_model_folders(
         base_path=base_path, discharge=discharge,
         scenarios_to_process=scenarios_to_process, analyze_noisy=analyze_noisy,
@@ -314,7 +313,6 @@ def setup_variability_run_context(base_directory, discharge, config_subdir="Mode
         'base_path': base_path,
         'cache_dir': cache_dir,
         'timed_out_dir': timed_out_dir,
-        'variability_map': variability_map,
         'model_folders': model_folders,
     }
 

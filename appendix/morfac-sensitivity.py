@@ -8,7 +8,6 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root, one level up from appendix/
 
-#%%
 from functions.F_general import apply_plot_style, setup_variability_run_context
 #%%
 apply_plot_style("AGU")
@@ -20,5 +19,5 @@ run_context = setup_variability_run_context(BASE_DIR,
                                             MORFAC = True)
 
 
-
+run_context
 # %%
