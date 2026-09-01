@@ -81,7 +81,6 @@ run_context = setup_variability_run_context(
 base_path = run_context['base_path']
 assessment_dir = run_context['cache_dir']
 timed_out_dir = run_context['timed_out_dir']
-VARIABILITY_MAP = run_context['variability_map']
 model_folders = run_context['model_folders']
 
 configs = {
@@ -125,7 +124,6 @@ for folder in model_folders:
         base_path=base_path,
         folder_name=folder.name,
         timed_out_dir=timed_out_dir,
-        variability_map=VARIABILITY_MAP,
         analyze_noisy=False,
     )
     if not run_paths:

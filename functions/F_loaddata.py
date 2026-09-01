@@ -100,7 +100,6 @@ def get_stitched_map_run_paths(base_path, folder_name, timed_out_dir=None, varia
         base_path=base_path,
         folder_name=folder_name,
         timed_out_dir=timed_out_dir,
-        variability_map=variability_map,
         analyze_noisy=analyze_noisy,
     )
     run_paths = []
