@@ -7,11 +7,70 @@ import pandas as pd
 import xarray as xr
 
 from functions.F_tidalriverdominance import select_max_flood_timestep, select_max_flood_indices_per_cycle
+from functions.F_general import parse_restart_folder_label
+
+def _find_timed_out_match(timed_out_dir, label, variability_map=None, analyze_noisy=False):
+    """Find the folder inside `timed_out_dir` matching `label` (a restart-prefix-free
+    run name, e.g. '1_MF_Qr500_pm5_n4').
+
+    Tries (in order): noisy-id matching, MORFAC-number prefix matching, the
+    variability-scenario name map, and finally falls back to comparing each
+    candidate's restart-prefix-stripped remainder against `label` directly. The
+    fallback makes stitching work for restart-renamed folders (e.g. 'rst_1_...',
+    'rst2__1_...') that live inside numbered timed-out dirs.
+    """
+    if not timed_out_dir.exists():
+        return None
+
+    if analyze_noisy:
+        match = re.search(r'noisy(\d+)', label)
+        if match:
+            noisy_id = match.group(0)
+            for candidate in timed_out_dir.iterdir():
+                if candidate.is_dir() and noisy_id in candidate.name:
+                    return candidate
+        return None
+
+    scenario_num = label.split('_')[0]
+    try:
+        scenario_key = str(int(scenario_num))
+    except Exception:
+        scenario_key = scenario_num
+
+    mf_match = re.search(r"MF(\d+(?:\.\d+)?)", label)
+    if mf_match:
+        mf_prefix = f"MF{int(float(mf_match.group(1)))}"
+        matching = [
+            p for p in timed_out_dir.iterdir()
+            if p.is_dir() and p.name.startswith(mf_prefix + '_')
+        ]
+        if matching:
+            return sorted(matching, key=lambda p: p.name)[0]
+
+    if variability_map is not None:
+        timed_out_name = variability_map.get(scenario_key, label)
+        timed_out_candidate = timed_out_dir / timed_out_name
+        if timed_out_candidate.exists() and timed_out_candidate.is_dir():
+            return timed_out_candidate
+
+    for candidate in timed_out_dir.iterdir():
+        if candidate.is_dir() and parse_restart_folder_label(candidate.name)[1] == label:
+            return candidate
+
+    return None
+
 
 def get_stitched_run_parts(base_path, folder_name, timed_out_dir=None, variability_map=None, analyze_noisy=False):
     """
-    Return run-part folders in stitch order: timed-out part first (if found),
-    then the main run folder.
+    Return run-part folders in stitch order (oldest first, current run last).
+
+    Runs that have been restarted after timing out are renamed with an 'rst' prefix
+    each time ('rst_...' after the 1st restart, 'rst2_...' after the 2nd, etc.). Each
+    earlier generation is archived in its own numbered timed-out directory:
+    'timed-out' holds the original (never-restarted) attempt, 'timed-out1' holds the
+    1st restart's timed-out attempt, 'timed-out2' the 2nd, and so on. This function
+    walks that chain and returns every part that should be stitched together, followed
+    by the current (main) run folder.
 
     This is shared logic for both HIS and map workflows.
     """
@@ -24,44 +83,18 @@ def get_stitched_run_parts(base_path, folder_name, timed_out_dir=None, variabili
     else:
         timed_out_dir = Path(timed_out_dir)
 
+    restart_level, remainder = parse_restart_folder_label(folder_label)
+
     parts = []
-
-    if timed_out_dir.exists():
-        timed_out_folder = None
-
-        if analyze_noisy:
-            match = re.search(r'noisy(\d+)', folder_label)
-            if match:
-                noisy_id = match.group(0)
-                for candidate in timed_out_dir.iterdir():
-                    if candidate.is_dir() and noisy_id in candidate.name:
-                        timed_out_folder = candidate
-                        break
-        else:
-            scenario_num = folder_label.split('_')[0]
-            try:
-                scenario_key = str(int(scenario_num))
-            except Exception:
-                scenario_key = scenario_num
-
-            mf_match = re.search(r"MF(\d+(?:\.\d+)?)", folder_label)
-            if mf_match:
-                mf_prefix = f"MF{int(float(mf_match.group(1)))}"
-                matching = [
-                    p for p in timed_out_dir.iterdir()
-                    if p.is_dir() and p.name.startswith(mf_prefix + '_')
-                ]
-                if matching:
-                    timed_out_folder = sorted(matching, key=lambda p: p.name)[0]
-
-            if variability_map is not None:
-                timed_out_name = variability_map.get(scenario_key, folder_label)
-                timed_out_candidate = timed_out_dir / timed_out_name
-                if timed_out_folder is None and timed_out_candidate.exists() and timed_out_candidate.is_dir():
-                    timed_out_folder = timed_out_candidate
-
-        if timed_out_folder is not None:
-            parts.append(timed_out_folder)
+    # Always check level 0 (base timed-out dir), even for non-restarted folders: a
+    # run can have an un-renamed predecessor there under the original naming scheme.
+    for level in range(max(restart_level, 1)):
+        level_dir = timed_out_dir if level == 0 else timed_out_dir.parent / f"{timed_out_dir.name}{level}"
+        level_folder = _find_timed_out_match(
+            level_dir, remainder, variability_map=variability_map, analyze_noisy=analyze_noisy,
+        )
+        if level_folder is not None:
+            parts.append(level_folder)
 
     if run_folder.exists() and run_folder.is_dir():
         parts.append(run_folder)

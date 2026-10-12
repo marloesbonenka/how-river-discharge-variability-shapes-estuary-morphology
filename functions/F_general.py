@@ -340,6 +340,23 @@ def normalize_scenario_key(scenario):
         return str(scenario)
 
 
+def parse_restart_folder_label(folder_label):
+    """Split a (possibly restart-prefixed) run folder name into (restart_level, remainder).
+
+    Restarted runs are renamed with an 'rst' prefix each time they are resumed after
+    timing out, e.g.:
+        '1_MF_Qr500_pm5_n4'         -> (0, '1_MF_Qr500_pm5_n4')   # never restarted
+        'rst_1_MF_Qr500_pm5_n4'     -> (1, '1_MF_Qr500_pm5_n4')   # restarted once
+        'rst2__1_MF_Qr500_pm5_n4'   -> (2, '1_MF_Qr500_pm5_n4')   # restarted twice
+    """
+    match = re.match(r'^rst(\d*)_+(.*)$', folder_label)
+    if match:
+        level_str, remainder = match.groups()
+        level = int(level_str) if level_str else 1
+        return level, remainder
+    return 0, folder_label
+
+
 def get_variability_map(discharge):
     """Return a normalized variability map with both padded and non-padded keys."""
     try:
@@ -377,17 +394,20 @@ def find_variability_model_folders(base_path, discharge, scenarios_to_process=No
         if analyze_noisy:
             model_folders = [
                 f for f in base_path.iterdir()
-                if f.is_dir() and f.name and f.name[0].isdigit() and 'noisy' in f.name.lower()
+                if f.is_dir() and f.name
+                and (f.name[0].isdigit() or f.name.startswith('rst'))
+                and 'noisy' in f.name.lower()
             ]
         else:
             model_folders = [
                 f for f in base_path.iterdir()
-                if f.is_dir() and f.name and f.name[0].isdigit()
+                if f.is_dir() and f.name
+                and (f.name[0].isdigit() or f.name.startswith('rst'))
             ]
     else:
         raise ValueError(f"Unsupported DISCHARGE for variability mode: {q}")
 
-    model_folders.sort(key=lambda x: int(x.name.split('_')[0]))
+    model_folders.sort(key=lambda x: int(parse_restart_folder_label(x.name)[1].split('_')[0]))
 
     if scenarios_to_process:
         scenario_filter = {
@@ -397,7 +417,7 @@ def find_variability_model_folders(base_path, discharge, scenarios_to_process=No
         }
         model_folders = [
             f for f in model_folders
-            if int(normalize_scenario_key(f.name.split('_')[0])) in scenario_filter
+            if int(normalize_scenario_key(parse_restart_folder_label(f.name)[1].split('_')[0])) in scenario_filter
         ]
 
     return model_folders

@@ -145,10 +145,6 @@ def _cache_has_target_dates(cache_paths: list[Path], target_dates) -> bool:
     if not cache_paths or any(not p.exists() for p in cache_paths):
         return False
 
-    # If no specific dates requested, accept whatever is in the cache.
-    if target_dates is None:
-        return True
-
     expected_signature = _target_dates_signature(target_dates)
     for cache_path in cache_paths:
         ds_cache = xu.open_dataset(cache_path)

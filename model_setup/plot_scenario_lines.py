@@ -16,6 +16,7 @@ is used here (one panel per n_peaks / per peak_ratio).
 """
 #%%
 import re
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -24,6 +25,10 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import matplotlib.gridspec as gridspec
 import matplotlib.lines as mlines
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root, one level up from model_setup/
+
+from functions.F_general import apply_plot_style
 
 # ============================================================================
 # Configuration
@@ -43,41 +48,7 @@ GREY_CONST = "#7f7f7f"   # grey for the constant (pm1_n0) reference line
 MM_TO_IN = 1 / 25.4
 FIGURE_WIDTH_MM = 170          # AGU full-page width
 
-AGU_RC = {
-    'font.size': 8,
-    'font.family': 'sans-serif',
-    'font.sans-serif': ['Calibri', 'Helvetica', 'DejaVu Sans'],
-    'axes.labelsize': 8,
-    'axes.titlesize': 8,
-    'xtick.labelsize': 8,
-    'ytick.labelsize': 8,
-    'legend.fontsize': 8,
-    'figure.titlesize': 9,
-    'mathtext.fontset': 'custom',
-    'mathtext.rm': 'Calibri',
-    'mathtext.it': 'Calibri:italic',
-    'mathtext.bf': 'Calibri:bold',
-
-    # --- Line weights: avoid hairlines (AGU rejects anything under 0.5pt) ---
-    'axes.linewidth': 0.5,
-    'lines.linewidth': 0.75,
-    'grid.linewidth': 0.4,
-    'xtick.major.width': 0.5,
-    'ytick.major.width': 0.5,
-    'xtick.minor.width': 0.35,
-    'ytick.minor.width': 0.35,
-
-    # --- Keep text as editable text in vector exports (not outlined paths) ---
-    'pdf.fonttype': 42,
-    'ps.fonttype': 42,
-    'svg.fonttype': 'none',
-
-    # --- Resolution / export ---
-    'figure.dpi': 150,          # screen preview only
-    'savefig.dpi': 300,         # within AGU's 300-600 ppi raster range
-}
-plt.rcParams.update(plt.rcParamsDefault)
-plt.rcParams.update(AGU_RC)
+apply_plot_style('AGU', font_size=8)
 
 # Margins in inches (space outside the panels), same convention as the
 # 15-panel sensitivity plot, but with a single row of panels here.
@@ -319,4 +290,82 @@ fig2.savefig(OUTPUT_DIR / f"scenario_lines_Q{TOTAL_Q}_by_amplitude.png", dpi=300
 fig2.savefig(OUTPUT_DIR / f"scenario_lines_Q{TOTAL_Q}_by_amplitude.pdf", bbox_inches="tight", transparent=True)
 plt.show(fig2)
 print(f"Saved: scenario_lines_Q{TOTAL_Q}_by_amplitude (.png/.pdf)")
+
+#%% ============================================================================
+# Plot 3 – one standalone single-panel plot per peak_ratio, for a fixed n_peaks
+# ============================================================================
+TARGET_N_PEAKS = 3
+target_ratios = sorted(r for (r, n) in scenarios if n == TARGET_N_PEAKS and r != 1.0)
+
+if not target_ratios:
+    print(f"  WARNING – no scenarios found for n_peaks = {TARGET_N_PEAKS}; skipping individual plots.")
+
+SINGLE_WIDTH_MM = 85          # AGU single-column width
+single_width_in = SINGLE_WIDTH_MM * MM_TO_IN
+single_height_in = 0.8 * single_width_in + TOP_MARGIN_IN + BOTTOM_MARGIN_IN
+
+for peak_ratio in target_ratios:
+    df = pd.read_csv(scenarios[(peak_ratio, TARGET_N_PEAKS)]["csv"])
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    df = df.sort_values("timestamp")
+    df_yr = df[df["timestamp"].dt.year == df["timestamp"].dt.year.min()].copy()
+
+    fig3 = plt.figure(figsize=(single_width_in, single_height_in))
+    gs3 = gridspec.GridSpec(
+        1, 1, figure=fig3,
+        top=1 - TOP_MARGIN_IN / single_height_in,
+        bottom=BOTTOM_MARGIN_IN / single_height_in,
+    )
+    ax = fig3.add_subplot(gs3[0, 0])
+    ax.plot(df_yr["timestamp"], df_yr["discharge_m3s"],
+            color=RATIO_COLOR[peak_ratio], linewidth=1.0, zorder=3)
+    ax.set_ylim(global_ylim)
+    ax.grid(True, alpha=0.2, linewidth=0.3)
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%m"))
+    ax.xaxis.set_major_locator(mdates.MonthLocator(interval=3))
+    ax.set_ylabel("Q [m³/s]", fontsize=8)
+
+    pr_label = f"{int(peak_ratio)}" if peak_ratio == int(peak_ratio) else f"{peak_ratio}"
+    ax.set_title(f"$n_{{\\mathrm{{peaks}}}}$ = {TARGET_N_PEAKS}, $R_{{\\mathrm{{peak}}}}$ = {pr_label}", fontsize=8)
+    fig3.supxlabel("month of year", y=SUPXLABEL_Y_IN / single_height_in)
+
+    pr_tag = pr_label.replace(".", "p")
+    fig3.savefig(OUTPUT_DIR / f"scenario_line_Q{TOTAL_Q}_n{TARGET_N_PEAKS}_pm{pr_tag}.png", dpi=300, bbox_inches="tight", transparent=True)
+    fig3.savefig(OUTPUT_DIR / f"scenario_line_Q{TOTAL_Q}_n{TARGET_N_PEAKS}_pm{pr_tag}.pdf", bbox_inches="tight", transparent=True)
+    plt.show(fig3)
+    print(f"Saved: scenario_line_Q{TOTAL_Q}_n{TARGET_N_PEAKS}_pm{pr_tag} (.png/.pdf)")
+
+#%% ============================================================================
+# Plot 4 – single panel with all peak_ratio scenarios overlaid, for a fixed n_peaks
+# ============================================================================
+if target_ratios:
+    fig4 = plt.figure(figsize=(single_width_in, single_height_in))
+    gs4 = gridspec.GridSpec(
+        1, 1, figure=fig4,
+        top=1 - TOP_MARGIN_IN / single_height_in,
+        bottom=BOTTOM_MARGIN_IN / single_height_in,
+    )
+    ax = fig4.add_subplot(gs4[0, 0])
+    for peak_ratio in target_ratios:
+        df = pd.read_csv(scenarios[(peak_ratio, TARGET_N_PEAKS)]["csv"])
+        df["timestamp"] = pd.to_datetime(df["timestamp"])
+        df = df.sort_values("timestamp")
+        df_yr = df[df["timestamp"].dt.year == df["timestamp"].dt.year.min()].copy()
+        pr_label = f"{int(peak_ratio)}" if peak_ratio == int(peak_ratio) else f"{peak_ratio}"
+        ax.plot(df_yr["timestamp"], df_yr["discharge_m3s"],
+                color=RATIO_COLOR[peak_ratio], linewidth=1.0, zorder=3,
+                label=f"$R_{{\\mathrm{{peak}}}}$ = {pr_label}")
+    ax.set_ylim(global_ylim)
+    ax.grid(True, alpha=0.2, linewidth=0.3)
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%m"))
+    ax.xaxis.set_major_locator(mdates.MonthLocator(interval=3))
+    ax.set_ylabel("Q [m³/s]", fontsize=8)
+    ax.set_title(f"$n_{{\\mathrm{{peaks}}}}$ = {TARGET_N_PEAKS}", fontsize=8)
+    ax.legend(fontsize=6, loc="upper right", frameon=True)
+    fig4.supxlabel("month of year", y=SUPXLABEL_Y_IN / single_height_in)
+
+    fig4.savefig(OUTPUT_DIR / f"scenario_lines_Q{TOTAL_Q}_n{TARGET_N_PEAKS}_allratios.png", dpi=300, bbox_inches="tight", transparent=True)
+    fig4.savefig(OUTPUT_DIR / f"scenario_lines_Q{TOTAL_Q}_n{TARGET_N_PEAKS}_allratios.pdf", bbox_inches="tight", transparent=True)
+    plt.show(fig4)
+    print(f"Saved: scenario_lines_Q{TOTAL_Q}_n{TARGET_N_PEAKS}_allratios (.png/.pdf)")
 #%%

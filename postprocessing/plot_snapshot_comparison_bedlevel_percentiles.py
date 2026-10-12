@@ -7,6 +7,9 @@ from pathlib import Path
 import re
 import numpy as np
 import matplotlib.pyplot as plt
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root, one level up from appendix/
 
 from functions.F_general import (
     get_variability_map,
@@ -163,7 +166,7 @@ for label, data in results.items():
 
     # p5 and p95 dashed lines
     ax.plot(x, data['p95'], color=color, linewidth=2, zorder=2)
-    # ax.plot(x, data['p5'],  color=color, linewidth=1.2, linestyle=':',  zorder=2)
+    ax.plot(x, data['p5'],  color=color, linewidth=1.2, linestyle=':',  zorder=2)
 
     # Mean as solid line
     # ax.plot(x, data['mean'], color=color, linewidth=2.0, linestyle='-', zorder=3)

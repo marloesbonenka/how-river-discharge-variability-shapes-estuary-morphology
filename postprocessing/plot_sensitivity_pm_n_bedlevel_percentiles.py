@@ -19,11 +19,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
 import matplotlib.patches as mpatches
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root, one level up from postprocessing/
 
 from functions.F_general import (
     _date_to_filename_tag,
     _date_to_label,
     _scenario_label,
+    
     _parse_pm_n,
     get_variability_map,
     find_variability_model_folders,
@@ -39,8 +43,8 @@ from functions.F_map_cache import cache_tag_from_bbox, load_or_update_map_cache_
 from functions.F_loaddata import get_stitched_map_run_paths
 
 #%% --- CONFIGURATION ---
-DISCHARGE = 1000
-depth_percentile = 95
+DISCHARGE = 500
+depth_percentile = 2
 
 SHOW_NOISY_ENVELOPE = True
 SHOW_DIFFERENCE = True   # show difference-from-constant plot

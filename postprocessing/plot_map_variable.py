@@ -18,7 +18,8 @@ from functions.F_morphological_activity import build_centerline_reference
 #%% --- 1. SETTINGS ---
 # Which scenarios to process (set to None or empty list for all)
 SCENARIOS_TO_PROCESS = None #['1', '2', '3', '4']  # Use all scenarios
-DISCHARGE = 1000
+DISCHARGE = 500
+MORFAC = True
 apply_detrending = True
 ZOOM = True          # True → crop axes to ZOOM_XLIM / ZOOM_YLIM
 
@@ -45,7 +46,7 @@ _tc = plt.rcParams['text.color']
 
 # --- Variable selection ---
 var_names = ['mesh2d_mor_bl']#, 'mesh2d_s1', 'mesh2d_taus']  # e.g. ['mesh2d_mor_bl'] or all three
-target_hydrodynamic_date = '2031-01-01' #'2055-12-31' # e.g. '2055-12-31'; when set, nearest timestep is used per run
+target_hydrodynamic_date = None#'2031-01-01' #'2055-12-31' # e.g. '2055-12-31'; when set, nearest timestep is used per run
 
 # Detrending settings (applies to bed level variable only)
 reference_time_idx = 0
@@ -77,6 +78,7 @@ run_context = setup_variability_run_context(
     discharge=DISCHARGE,
     scenarios_to_process=SCENARIOS_TO_PROCESS,
     analyze_noisy=False,
+    MORFAC = MORFAC
 )
 base_path = run_context['base_path']
 assessment_dir = run_context['cache_dir']
@@ -117,6 +119,7 @@ for folder in model_folders:
     model_location = base_path / folder
     _zoom_subfolder = f"zoom" if ZOOM else ""
     output_plots_dir = base_path / 'output_plots' / 'map_plots' / STYLE / _zoom_subfolder if ZOOM else base_path / 'output_plots' / 'map_plots' / STYLE
+    output_plots_dir = output_plots_dir / folder.name
     output_plots_dir.mkdir(parents=True, exist_ok=True)
     print(f"\nProcessing: {folder.name}")
 
@@ -282,3 +285,4 @@ for folder in model_folders:
 print("\n" + "="*30)
 print("BATCH PLOTTING COMPLETE")
 print("="*30)
+# %%

@@ -109,3 +109,4 @@ for folder in model_folders:
 print("\n" + "="*30)
 print("PLOTTING COMPLETE")
 print("="*30)
+# %%
