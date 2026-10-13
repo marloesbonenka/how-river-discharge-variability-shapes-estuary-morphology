@@ -1,259 +1,805 @@
-"""Compare detrended bed level cross-sections of two scenarios with the same amount of
-sediment import, but either by a large peak or frequent small peaks in river discharge.
+# %% Compare detrended cross-section bed profiles and channel-depth metrics
+"""
+Compare the final morphology of pm3_n5 and pm5_n1 using the existing cached
+MAP files only.
 
-For a specific snapshot in time, the bed level (mesh2d_mor_bl) is sampled along a few
-across-estuary cross-sections (fixed x), detrended using the same t=0 centerline
-reference profile approach as in postprocessing/plot_map_variable.py, and plotted as
-bed level vs. y-coordinate. One figure is produced per cross-section, each containing
-both scenarios."""
+This script:
+- Opens existing cached mesh2d_mor_bl MAP output directly;
+- Selects the timestep nearest to 2031-01-01;
+- Builds the same t=0 centreline reference profile used for detrending in
+  plot_map_variable.py;
+- Samples each cross-section on a regular y-grid using a KDTree, rather than
+  selecting one irregular mesh-face x-column;
+- Plots detrended bed profiles for both scenarios;
+- Calculates channel depth from each detrended cross-section profile.
 
-#%% IMPORTS
+No detailed-hydrodynamic run output is used.
+No raw MAP output is loaded.
+No cache is generated, updated, or stitched.
+No timed-out directory is inspected.
+"""
+
+# %%
 from pathlib import Path
 import re
-import numpy as np
-import matplotlib.pyplot as plt
 import sys
+
+import matplotlib.pyplot as plt
+import numpy as np
+import xarray as xr
+from scipy.spatial import cKDTree
+
+
+# %%
+# =============================================================================
+# PROJECT IMPORTS
+# =============================================================================
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root, one level up from postprocessing/
 
-from functions.F_general import (
-    get_variability_map,
-    get_snapshot_matches_by_target_dates,
-    apply_plot_style,
-)
-
-from functions.F_map_cache import cache_tag_from_bbox, load_or_update_map_cache_multi, _get_face_coords
-from functions.F_loaddata import get_stitched_map_run_paths
+from functions.F_general import apply_plot_style
 from functions.F_morphological_activity import build_centerline_reference
 
-# --- CONFIGURATION ---
-DISCHARGE = 500
-TARGET_DATE = np.datetime64('2031-01-01')
-CACHE_BBOX = [1, 1, 45000, 15000]
-CACHE_TAG = None
-APPEND_TIMESTEPS = True
-APPEND_VARIABLES = True
-Y_RANGE = (0, 15000)
 
-# Cross-section locations along the estuary [m]
-CROSS_SECTION_X_KM = np.linspace(25, 45, 21)
-X_MATCH_TOL = 1.0  # [m] tolerance for matching a face column to a target x
+# %%
+# =============================================================================
+# INPUT: EXISTING CACHED MAIN-SCENARIO MAP FILES
+# =============================================================================
 
-# Percentile metric settings (mirrors postprocessing/plot_sensitivity_pm_n_bedlevel_percentiles.py):
-# the horizontal line shows p{DEPTH_PERCENTILE} of the RAW bed level within a frozen t=0
-# channel mask (same bed-level threshold approach + same y-window as that script), detrended
-# by subtracting the t=0 p{DEPTH_PERCENTILE} of the same mask -- NOT a percentile of this
-# cross-section's own detrended profile.
-DEPTH_PERCENTILE = 5          # percentile of raw bed level within the frozen t=0 channel mask
-CHANNEL_INIT_THRESHOLD = 2.2  # [m] t=0 bed level threshold defining the channel footprint
-BIN_HALF_WIDTH = 500          # [m] half-width of the x-window around each cross-section (~1 km bin)
-PERCENTILE_Y_RANGE = (5000, 10000)  # [m] y-window for the percentile subarea (matches y_range in that script)
-
-# Detrending settings (mirrors postprocessing/plot_map_variable.py)
-REFERENCE_TIME_IDX = 0
-DETREND_LAND_THRESHOLD = 6.0
-CENTERLINE_XMIN = 20000     # [m] start of x-range for the reference profile
-CENTERLINE_XMAX = 45000     # [m] end of x-range for the reference profile
-CENTERLINE_Y = 7500         # [m] exact y-coordinate of the channel centerline
-
-# --- AGU figure sizing (figures must be 50-170 mm wide) ---
-MM_TO_IN = 1 / 25.4
-FIGURE_WIDTH_MM = 170 / 2  # single-column-ish width, matches the percentile comparison plot
-
-apply_plot_style('AGU', font_size=10, title_delta=0, tick_delta=0, **{'grid.linewidth': 0.5})
-
-#%%
-# Output
-OUTPUT_DIR = Path(r"U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\detailed-hydro-run\output_plots\comparison_amplitude_frequency_same_Vsed\cross_sections")
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-OUTPUT_FILENAME_PREFIX = "comparison_amplitude_frequency_same_Vsed_cross_section"
-
-all_pm_vals = sorted([0, 2, 3, 4, 5])  # pm values to compare
-# Colormaps: Blues for pm (light->dark) -- same colors as plot_snapshot_comparison_bedlevel_percentiles.py
-_n_pm = max(len(all_pm_vals) - 1, 1)
-PM_COLOR = {pm: plt.cm.Blues(0.35 + 0.55 * i / _n_pm) for i, pm in enumerate(all_pm_vals)}
-
-# Paths defined by you
-MODEL_PATHS = {
-    'pm3_n5': Path(r"U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\03_Qr500_pm3_n5.9600329"),
-    'pm5_n1': Path(r"U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\05_Qr500_pm5_n1.9517572"),
+CACHE_FILES = {
+    "pm3_n5": Path(
+        r"U:\PhDNaturalRhythmEstuaries\Models"
+        r"\2_RiverDischargeVariability_domain45x15_Gaussian"
+        r"\Model_Output\Q500\cached_data"
+        r"\mapoutput_mesh2d_mor_bl_03_Qr500_pm3_n5.9600329_"
+        r"bbox_1_1_45000_15000.nc"
+    ),
+    "pm5_n1": Path(
+        r"U:\PhDNaturalRhythmEstuaries\Models"
+        r"\2_RiverDischargeVariability_domain45x15_Gaussian"
+        r"\Model_Output\Q500\cached_data"
+        r"\mapoutput_mesh2d_mor_bl_05_Qr500_pm5_n1.9517572_"
+        r"bbox_1_1_45000_15000.nc"
+    ),
 }
 
-# Directories for cache/helpers
-base_path = Path(r"U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500")
-assessment_dir = base_path / 'cached_data'
-timed_out_dir = base_path / 'timed-out'
+SCENARIO_ORDER = ["pm3_n5", "pm5_n1"]
+REFERENCE_SCENARIO = "pm3_n5"
+COMPARISON_SCENARIO = "pm5_n1"
+DISCHARGE = 500
+TARGET_DATE = np.datetime64("2031-01-01", "ns")
 
-# --- DATA PROCESSING ---
-# results[label][x_km] = {'y': ..., 'bedlevel': ...}
-results = {}
 
-for label, folder_path in MODEL_PATHS.items():
-    print(f"\nProcessing: {folder_path.name}")
+# %%
+# =============================================================================
+# MAP / DETRENDING SETTINGS
+# =============================================================================
 
-    # 1. Path resolution logic
-    run_paths = get_stitched_map_run_paths(
-        base_path=base_path,
-        folder_name=folder_path.name,
-        timed_out_dir=timed_out_dir,
-        variability_map=get_variability_map(DISCHARGE),
-        analyze_noisy=False,
-    )
-    if not run_paths:
-        run_paths = [folder_path]
+BEDLEVEL_VAR = "mesh2d_mor_bl"
+FACE_X_VAR = "mesh2d_face_x"
+FACE_Y_VAR = "mesh2d_face_y"
 
-    # 2. Cache loading
-    ds = load_or_update_map_cache_multi(
-        cache_dir=assessment_dir,
-        folder_name=folder_path.name,
-        run_paths=run_paths,
-        var_names=['mesh2d_mor_bl'],
-        bbox=CACHE_BBOX,
-        append_time=APPEND_TIMESTEPS,
-        append_vars=APPEND_VARIABLES,
-        cache_tag=cache_tag_from_bbox(CACHE_BBOX, CACHE_TAG),
-    )
+REFERENCE_TIME_IDX = 0
+DETREND_LAND_THRESHOLD_M = 6.0
 
-    if ds is None:
-        print(f"  No cached data for {folder_path.name}, skipping.")
-        continue
+CENTERLINE_XMIN_M = 20_000.0
+CENTERLINE_XMAX_M = 45_000.0
+CENTERLINE_Y_M = 7_500.0
 
-    # 3. Build the t=0 centerline reference profile (same approach as plot_map_variable.py)
-    reference_per_face = None
-    if 'time' not in ds['mesh2d_mor_bl'].dims:
-        print("  [WARNING] Cannot detrend mesh2d_mor_bl: no time dimension found.")
-        ds.close()
-        continue
-    try:
-        reference_per_face = build_centerline_reference(
-            ds, 'mesh2d_mor_bl', REFERENCE_TIME_IDX,
-            xmin=CENTERLINE_XMIN, xmax=CENTERLINE_XMAX,
-            centerline_y=CENTERLINE_Y,
+
+# %%
+# =============================================================================
+# CROSS-SECTION AND CHANNEL-DEPTH SETTINGS
+# =============================================================================
+
+# Preserve your intended locations, but explicitly use integer-km values.
+CROSS_SECTION_X_KM = np.arange(25.0, 46.0, 1.0)
+X_COORDS_M = CROSS_SECTION_X_KM * 1_000.0
+
+# This is the same central 5-km strip used by the successful uniform-profile
+# script, rather than the full y=0–15 km model width.
+Y_RANGE_M = (5_000.0, 10_000.0)
+N_Y_SAMPLES = 500
+
+# Use selected representative sections for individual profile figures.
+SELECTED_PROFILE_KM = CROSS_SECTION_X_KM.astype(int)
+
+# A value of 1 is the single sampled-point thalweg.
+# A value of 3 makes a more robust metric: mean of the three deepest sampled
+# profile points at each cross-section.
+N_DEEPEST = 3
+
+# This is an optional profile-only mask. It removes elevated land if present.
+# Set to None to keep every sampled elevation.
+PROFILE_LAND_THRESHOLD_M = 8.0
+
+
+# %%
+# =============================================================================
+# OUTPUT / PLOT SETTINGS
+# =============================================================================
+
+OUTPUT_DIR = Path(
+    r"U:\PhDNaturalRhythmEstuaries\Models"
+    r"\2_RiverDischargeVariability_domain45x15_Gaussian"
+    r"\Model_Output\Q500\output_plots"
+    r"\comparison_amplitude_frequency_same_Vsed"
+    r"\cross_sections_channel_depth"
+)
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+PROFILE_OUTPUT_DIR = OUTPUT_DIR / "detrended_bed_profiles"
+PROFILE_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+DATA_OUTPUT_DIR = OUTPUT_DIR / "csv"
+DATA_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+apply_plot_style(
+    "AGU",
+    font_size=10,
+    title_delta=0,
+    tick_delta=0,
+    **{"grid.linewidth": 0.5},
+)
+
+DPI = 300
+
+SCENARIO_COLORS = {
+    "pm3_n5": plt.cm.Blues(0.55),
+    "pm5_n1": plt.cm.Blues(0.92),
+}
+
+
+# %%
+# =============================================================================
+# FUNCTIONS
+# =============================================================================
+
+def get_face_dimension(ds, bedlevel_var):
+    """Return the unique non-time dimension of the MAP bed-level variable."""
+    if bedlevel_var not in ds:
+        raise KeyError(
+            f"'{bedlevel_var}' not found. Available variables:\n"
+            f"{list(ds.variables)}"
         )
-    except ValueError as exc:
-        print(f"  [WARNING] Could not build centerline reference: {exc}")
-        ds.close()
-        continue
 
-    # 4. Extraction of the target snapshot
-    matches = get_snapshot_matches_by_target_dates(ds.time.values, [TARGET_DATE])
-    if not matches:
-        print(f"  No snapshot found for {TARGET_DATE}")
-        ds.close()
-        continue
+    dims = ds[bedlevel_var].dims
 
-    _, ts_idx, _ = matches[0]
-    raw_bed = ds['mesh2d_mor_bl'].isel(time=ts_idx).values
-    init_bed = ds['mesh2d_mor_bl'].isel(time=0).values  # raw t=0 bed level, for the frozen channel mask
-    face_x, face_y = _get_face_coords(ds)
+    if "time" not in dims:
+        raise ValueError(
+            f"'{bedlevel_var}' has no time dimension; dimensions are {dims}."
+        )
 
-    # 5. Detrend: mask land at the CURRENT timestep, then subtract the t=0
-    #    centerline reference profile (interpolated per face by x).
+    non_time_dims = [dim for dim in dims if dim != "time"]
+
+    if len(non_time_dims) != 1:
+        raise ValueError(
+            f"Expected one face dimension in '{bedlevel_var}', "
+            f"but found dimensions {dims}."
+        )
+
+    return non_time_dims[0]
+
+
+def find_nearest_time_index(ds, target_date):
+    """
+    Find the cached MAP timestep nearest to target_date.
+
+    Returns
+    -------
+    time_index : int
+    selected_time : numpy.datetime64
+    all_times : ndarray
+    """
+    if "time" not in ds.dims or ds.sizes["time"] == 0:
+        raise ValueError("Dataset has no valid time dimension.")
+
+    all_times = np.asarray(ds["time"].values).astype("datetime64[ns]")
+
+    time_index = int(np.argmin(np.abs(all_times - target_date)))
+
+    return time_index, all_times[time_index], all_times
+
+
+def sample_detrended_profiles(
+    ds,
+    snapshot_index,
+    x_coords_m,
+    y_range_m,
+    n_y_samples,
+):
+    """
+    Build a t=0 centreline reference, detrend selected-time bed elevation,
+    and sample regular y-profiles at each target x using nearest face centres.
+
+    Returns
+    -------
+    y_samples_m : ndarray
+        Uniform cross-section sampling coordinates [m].
+    detrended_profiles : dict[str, ndarray]
+        Detrended sampled profile for every cross-section.
+    raw_profiles : dict[str, ndarray]
+        Raw sampled profile for every cross-section.
+    """
+    required = [BEDLEVEL_VAR, FACE_X_VAR, FACE_Y_VAR]
+    missing = [name for name in required if name not in ds]
+
+    if missing:
+        raise KeyError(
+            f"Required variable(s) missing: {missing}\n"
+            f"Available variables:\n{list(ds.variables)}"
+        )
+
+    face_dimension = get_face_dimension(ds, BEDLEVEL_VAR)
+
+    # Same t=0 centreline-reference detrending method as your existing script.
+    reference_per_face = build_centerline_reference(
+        ds=ds,
+        var_name=BEDLEVEL_VAR,
+        reference_time_idx=REFERENCE_TIME_IDX,
+        xmin=CENTERLINE_XMIN_M,
+        xmax=CENTERLINE_XMAX_M,
+        centerline_y=CENTERLINE_Y_M,
+    )
+
+    face_x = np.asarray(ds[FACE_X_VAR].values, dtype=float)
+    face_y = np.asarray(ds[FACE_Y_VAR].values, dtype=float)
+
+    raw_bed = np.asarray(
+        ds[BEDLEVEL_VAR]
+        .isel(time=snapshot_index)
+        .transpose(face_dimension)
+        .values,
+        dtype=float,
+    )
+
+    if not (
+        face_x.ndim == 1
+        and face_y.ndim == 1
+        and raw_bed.ndim == 1
+    ):
+        raise ValueError(
+            "Expected 1-D face x, face y, and selected-time bed arrays. "
+            f"Shapes are x={face_x.shape}, y={face_y.shape}, "
+            f"bed={raw_bed.shape}."
+        )
+
+    if not (face_x.size == face_y.size == raw_bed.size):
+        raise ValueError(
+            "Face-coordinate and bed-level array lengths differ:\n"
+            f"x = {face_x.size}, y = {face_y.size}, "
+            f"bed = {raw_bed.size}."
+        )
+
+    # Apply the current-time land mask before subtraction, exactly as in the
+    # map-plotting script and your old cross-section script.
     masked_bed = raw_bed.copy()
-    masked_bed[raw_bed > DETREND_LAND_THRESHOLD] = np.nan
+    masked_bed[raw_bed > DETREND_LAND_THRESHOLD_M] = np.nan
+
     detrended_bed = masked_bed - reference_per_face
 
-    # 6. Sample cross-sections: pick the face column nearest to each target x.
-    results[label] = {}
-    y_mask = (face_y >= Y_RANGE[0]) & (face_y <= Y_RANGE[1])
-    percentile_y_mask = (face_y >= PERCENTILE_Y_RANGE[0]) & (face_y <= PERCENTILE_Y_RANGE[1])
-    for x_km in CROSS_SECTION_X_KM:
-        target_x = x_km * 1000
-        nearest_x_value = face_x[np.argmin(np.abs(face_x - target_x))]
-        col_mask = y_mask & np.isclose(face_x, nearest_x_value, atol=X_MATCH_TOL)
+    face_tree = cKDTree(np.column_stack((face_x, face_y)))
 
-        y_col = face_y[col_mask]
-        z_col = detrended_bed[col_mask]
-        order = np.argsort(y_col)
+    y_samples_m = np.linspace(
+        y_range_m[0],
+        y_range_m[1],
+        n_y_samples,
+    )
 
-        # 7. p{DEPTH_PERCENTILE} bed level metric, computed the same way as in
-        #    plot_sensitivity_pm_n_bedlevel_percentiles.py: percentile of RAW bed level
-        #    within a frozen t=0 channel mask (PERCENTILE_Y_RANGE + ~1 km x-bin around this
-        #    cross-section + init bed level below CHANNEL_INIT_THRESHOLD), detrended by
-        #    subtracting the same percentile computed on the t=0 field.
-        bin_mask = (
-            percentile_y_mask
-            & (face_x >= target_x - BIN_HALF_WIDTH) & (face_x < target_x + BIN_HALF_WIDTH)
-            & (init_bed < CHANNEL_INIT_THRESHOLD)
+    raw_profiles = {}
+    detrended_profiles = {}
+
+    for x_coord_m in x_coords_m:
+        section_name = f"km{int(round(x_coord_m / 1000.0))}"
+
+        sample_points = np.column_stack(
+            (
+                np.full(y_samples_m.size, x_coord_m, dtype=float),
+                y_samples_m,
+            )
         )
-        p_detrended = np.nan
-        if np.any(bin_mask):
-            init_vals = init_bed[bin_mask]
-            init_vals = init_vals[~np.isnan(init_vals)]
-            snap_vals = raw_bed[bin_mask]
-            snap_vals = snap_vals[~np.isnan(snap_vals)]
-            if init_vals.size and snap_vals.size:
-                p_init = np.percentile(init_vals, DEPTH_PERCENTILE)
-                p_snapshot = np.percentile(snap_vals, DEPTH_PERCENTILE)
-                p_detrended = p_snapshot - p_init
 
-        results[label][x_km] = {
-            'y': y_col[order],
-            'bedlevel': z_col[order],
-            'p_detrended': p_detrended,
+        _, face_indices = face_tree.query(sample_points)
+
+        raw_profile = raw_bed[face_indices].astype(float)
+        detrended_profile = detrended_bed[face_indices].astype(float)
+
+        # Optional stricter profile mask. This is applied to both profile
+        # representations purely for plotting and depth calculation.
+        if PROFILE_LAND_THRESHOLD_M is not None:
+            land_mask = raw_profile > PROFILE_LAND_THRESHOLD_M
+            raw_profile[land_mask] = np.nan
+            detrended_profile[land_mask] = np.nan
+
+        raw_profiles[section_name] = raw_profile
+        detrended_profiles[section_name] = detrended_profile
+
+    return y_samples_m, detrended_profiles, raw_profiles
+
+
+def compute_depth_metrics(detrended_profile, n_deepest=3):
+    """
+    Calculate channel-depth metrics from one detrended cross-section profile.
+
+    Because the profile is detrended relative to the initial centreline bed,
+    lower/negative values represent deeper bed elevations relative to that
+    local initial longitudinal reference.
+
+    Metrics
+    -------
+    thalweg_bedlevel:
+        Single minimum detrended bed level. More negative = deeper.
+
+    robust_deep_bedlevel:
+        Mean of the N_DEEPEST lowest sampled detrended points.
+        More negative = deeper.
+
+    thalweg_depth:
+        Positive depth equivalent of thalweg_bedlevel:
+            -thalweg_bedlevel
+
+    robust_depth:
+        Positive depth equivalent of robust_deep_bedlevel:
+            -robust_deep_bedlevel
+
+    Notes
+    -----
+    These are bed-elevation-relative metrics, not instantaneous hydraulic
+    water depths. A positive change in thalweg_depth means a lower/deeper bed
+    relative to the chosen t=0 centreline reference.
+    """
+    valid_values = np.asarray(detrended_profile, dtype=float)
+    valid_values = valid_values[np.isfinite(valid_values)]
+
+    if valid_values.size == 0:
+        return {
+            "thalweg_bedlevel": np.nan,
+            "robust_deep_bedlevel": np.nan,
+            "thalweg_depth": np.nan,
+            "robust_depth": np.nan,
+            "n_valid_samples": 0,
         }
 
-    ds.close()
+    n_available = min(int(n_deepest), valid_values.size)
 
-#%% --- PLOTTING ---
-# One figure per cross-section, with both scenarios shown together.
+    deepest_values = np.partition(valid_values, n_available - 1)[:n_available]
 
-def _right_label(ax, x, profile, text, color, dy=0):
-    valid = ~np.isnan(np.asarray(profile))
-    if not valid.any():
-        return
-    x_end = np.asarray(x)[valid][-1]
-    y_end = np.asarray(profile)[valid][-1]
-    ax.annotate(text,
-                xy=(x_end, y_end), xycoords='data',
-                xytext=(4, dy), textcoords='offset points',
-                va='center', ha='left', color=color,
-                annotation_clip=False)
+    thalweg_bedlevel = np.nanmin(valid_values)
+    robust_deep_bedlevel = np.nanmean(deepest_values)
+
+    return {
+        "thalweg_bedlevel": thalweg_bedlevel,
+        "robust_deep_bedlevel": robust_deep_bedlevel,
+        "thalweg_depth": -thalweg_bedlevel,
+        "robust_depth": -robust_deep_bedlevel,
+        "n_valid_samples": int(valid_values.size),
+    }
 
 
-for x_km in CROSS_SECTION_X_KM:
-    fig, ax = plt.subplots()
+def scenario_pm_value(label):
+    """Extract integer pm value from a label such as pm3_n5."""
+    match = re.search(r"pm(\d+)", label)
+    return int(match.group(1)) if match else None
 
-    for label, data_by_x in results.items():
-        if x_km not in data_by_x:
-            continue
-        data = data_by_x[x_km]
 
-        match = re.search(r'pm(\d+)', label)
-        pm_value = int(match.group(1)) if match else 0
-        n_match = re.search(r'n(\d+)', label)
-        n_value = int(n_match.group(1)) if n_match else 0
+def scenario_n_value(label):
+    """Extract integer n value from a label such as pm3_n5."""
+    match = re.search(r"n(\d+)", label)
+    return int(match.group(1)) if match else None
 
-        color = PM_COLOR[pm_value]
 
-        y = data['y']
-        bedlevel = data['bedlevel']
+def plot_profile_pair(
+    section_name,
+    y_samples_m,
+    detrended_profiles_by_scenario,
+    depth_metrics_by_scenario,
+):
+    """Plot one regular-grid detrended bed-profile comparison."""
+    fig, ax = plt.subplots(figsize=(6.8, 3.8))
 
-        ax.plot(y, bedlevel, color=color, linewidth=2, zorder=2)
-        p_detrended = data['p_detrended']
-        if not np.isnan(p_detrended):
-            ax.axhline(p_detrended, color=color, linestyle='--', linewidth=1.2, zorder=1)
-            # Anchor the label to the same x-position as the curve's own end label
-            # (last non-NaN bedlevel point), not the full y-range of the cross-section.
-            p5_profile = np.where(np.isnan(bedlevel), np.nan, p_detrended)
-            _right_label(ax, y, p5_profile, 'p5 bed level', color)
+    for scenario_name in SCENARIO_ORDER:
+        profile = detrended_profiles_by_scenario[scenario_name][section_name]
+        metrics = depth_metrics_by_scenario[scenario_name][section_name]
 
-        label2_text = fr'$\text{{R}}_{{peak}} = {pm_value}$'
-        label3_text = fr'$\text{{n}}_{{peaks}}= {n_value}$'
-        _right_label(ax, y, bedlevel, f'{label2_text}\n{label3_text}', color)
+        pm_value = scenario_pm_value(scenario_name)
+        n_value = scenario_n_value(scenario_name)
 
-    # ax.set_xlim(5000, 10000)
-    ax.set_xlabel('y-coordinate [m]')
-    ax.set_ylabel('detrended bed level [m]')
-    ax.set_title(rf'$\text{{Q}}_{{mean}} = {DISCHARGE} \text{{ m³/s}}$, x = {x_km} km')
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.grid(True, linestyle='--')
+        label = (
+            rf"$R_{{peak}} = {pm_value}$, "
+            rf"$n_{{peaks}} = {n_value}$"
+        )
 
-    OUTPUT_PATH = OUTPUT_DIR / f"{OUTPUT_FILENAME_PREFIX}_x{x_km}km"
-    plt.savefig(OUTPUT_PATH.with_suffix('.png'), dpi=300, bbox_inches='tight')
-    # plt.savefig(OUTPUT_PATH.with_suffix('.pdf'), bbox_inches='tight')
-    print(f"Plot saved to: {OUTPUT_PATH.with_suffix('.png')} and {OUTPUT_PATH.with_suffix('.pdf')}")
+        ax.plot(
+            y_samples_m / 1000.0,
+            profile,
+            color=SCENARIO_COLORS[scenario_name],
+            linewidth=1.4,
+            label=label,
+        )
 
-plt.show()
+        # Mark the robust mean-deepest-N bed level.
+        if np.isfinite(metrics["robust_deep_bedlevel"]):
+            ax.axhline(
+                metrics["robust_deep_bedlevel"],
+                color=SCENARIO_COLORS[scenario_name],
+                linestyle="--",
+                linewidth=0.8,
+                alpha=0.85,
+            )
+
+    km = int(section_name.replace("km", ""))
+
+    ax.set_title(
+        rf"$Q_{{mean}} = {DISCHARGE}$ m$^3$ s$^{{-1}}$, "
+        rf"$x = {km}$ km"
+    )
+    ax.set_xlabel("Cross-estuary distance [km]")
+    ax.set_ylabel("Detrended bed level [m]")
+    ax.grid(True, linestyle="--", alpha=0.55)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.legend(loc="best", frameon=False)
+
+    fig.tight_layout()
+
+    output_path = PROFILE_OUTPUT_DIR / (
+        f"detrended_bed_profile_{section_name}.png"
+    )
+    fig.savefig(output_path, dpi=DPI, bbox_inches="tight")
+    fig.savefig(output_path.with_suffix(".pdf"), bbox_inches="tight")
+    plt.close(fig)
+
+    print(f"Saved: {output_path.name}")
+
+
 # %%
+# =============================================================================
+# LOAD BOTH CACHE FILES, EXTRACT UNIFORM PROFILES, CALCULATE DEPTHS
+# =============================================================================
+
+detrended_profiles = {}
+raw_profiles = {}
+depth_metrics = {}
+selected_times = {}
+
+y_samples_reference_m = None
+
+for scenario_name in SCENARIO_ORDER:
+    cache_file = CACHE_FILES[scenario_name]
+
+    print("\n" + "=" * 80)
+    print(f"Processing {scenario_name}")
+    print(f"Cache: {cache_file}")
+    print("=" * 80)
+
+    if not cache_file.exists():
+        raise FileNotFoundError(f"Cache file does not exist:\n{cache_file}")
+
+    ds = xr.open_dataset(cache_file)
+
+    try:
+        snapshot_index, selected_time, all_times = find_nearest_time_index(
+            ds=ds,
+            target_date=TARGET_DATE,
+        )
+
+        print(
+            f"Available time range: {all_times[0]} to {all_times[-1]}\n"
+            f"Requested time:       {TARGET_DATE}\n"
+            f"Selected time:        {selected_time}\n"
+            f"Selected index:       {snapshot_index}"
+        )
+
+        y_samples_m, scenario_detrended_profiles, scenario_raw_profiles = (
+            sample_detrended_profiles(
+                ds=ds,
+                snapshot_index=snapshot_index,
+                x_coords_m=X_COORDS_M,
+                y_range_m=Y_RANGE_M,
+                n_y_samples=N_Y_SAMPLES,
+            )
+        )
+
+        if y_samples_reference_m is None:
+            y_samples_reference_m = y_samples_m
+        elif not np.allclose(y_samples_reference_m, y_samples_m):
+            raise ValueError(
+                "The regular y-sampling positions differ between scenarios."
+            )
+
+        detrended_profiles[scenario_name] = scenario_detrended_profiles
+        raw_profiles[scenario_name] = scenario_raw_profiles
+        selected_times[scenario_name] = selected_time
+
+        depth_metrics[scenario_name] = {}
+
+        for x_km in CROSS_SECTION_X_KM:
+            section_name = f"km{int(round(x_km))}"
+
+            depth_metrics[scenario_name][section_name] = (
+                compute_depth_metrics(
+                    detrended_profile=(
+                        scenario_detrended_profiles[section_name]
+                    ),
+                    n_deepest=N_DEEPEST,
+                )
+            )
+
+    finally:
+        ds.close()
+
+
+# %%
+# =============================================================================
+# PLOT SELECTED DETRENDED BED-PROFILE COMPARISONS
+# =============================================================================
+
+for x_km in SELECTED_PROFILE_KM:
+    section_name = f"km{int(x_km)}"
+
+    plot_profile_pair(
+        section_name=section_name,
+        y_samples_m=y_samples_reference_m,
+        detrended_profiles_by_scenario=detrended_profiles,
+        depth_metrics_by_scenario=depth_metrics,
+    )
+
+
+# %%
+# =============================================================================
+# BUILD DEPTH ARRAYS
+# =============================================================================
+
+section_names = [f"km{int(round(x_km))}" for x_km in CROSS_SECTION_X_KM]
+
+thalweg_depth = {}
+robust_depth = {}
+thalweg_bedlevel = {}
+robust_deep_bedlevel = {}
+
+for scenario_name in SCENARIO_ORDER:
+    thalweg_depth[scenario_name] = np.array(
+        [
+            depth_metrics[scenario_name][section_name]["thalweg_depth"]
+            for section_name in section_names
+        ]
+    )
+
+    robust_depth[scenario_name] = np.array(
+        [
+            depth_metrics[scenario_name][section_name]["robust_depth"]
+            for section_name in section_names
+        ]
+    )
+
+    thalweg_bedlevel[scenario_name] = np.array(
+        [
+            depth_metrics[scenario_name][section_name]["thalweg_bedlevel"]
+            for section_name in section_names
+        ]
+    )
+
+    robust_deep_bedlevel[scenario_name] = np.array(
+        [
+            depth_metrics[scenario_name][section_name]["robust_deep_bedlevel"]
+            for section_name in section_names
+        ]
+    )
+
+
+delta_thalweg_depth = (
+    thalweg_depth[COMPARISON_SCENARIO]
+    - thalweg_depth[REFERENCE_SCENARIO]
+)
+
+delta_robust_depth = (
+    robust_depth[COMPARISON_SCENARIO]
+    - robust_depth[REFERENCE_SCENARIO]
+)
+
+
+# %%
+# =============================================================================
+# PLOT ALONG-ESTUARY CHANNEL-DEPTH COMPARISON
+# =============================================================================
+
+fig, axes = plt.subplots(
+    nrows=2,
+    ncols=1,
+    figsize=(7.0, 6.2),
+    sharex=True,
+    gridspec_kw={"height_ratios": [2.0, 1.0]},
+)
+
+ax_depth, ax_difference = axes
+
+for scenario_name in SCENARIO_ORDER:
+    ax_depth.plot(
+        CROSS_SECTION_X_KM,
+        robust_depth[scenario_name],
+        marker="o",
+        markersize=3.5,
+        linewidth=1.25,
+        color=SCENARIO_COLORS[scenario_name],
+        label=scenario_name,
+    )
+
+ax_depth.set_ylabel(
+    f"Channel depth [m]\n"
+    f"(−mean of {N_DEEPEST} deepest samples)"
+)
+ax_depth.set_title(
+    "Detrended channel-depth metric at final morphological snapshot"
+)
+ax_depth.grid(True, linestyle="--", alpha=0.55)
+ax_depth.legend(loc="best", frameon=False)
+ax_depth.spines["top"].set_visible(False)
+ax_depth.spines["right"].set_visible(False)
+
+ax_difference.axhline(
+    0.0,
+    color="0.25",
+    linewidth=0.75,
+    zorder=0,
+)
+
+ax_difference.plot(
+    CROSS_SECTION_X_KM,
+    delta_robust_depth,
+    marker="o",
+    markersize=3.5,
+    linewidth=1.25,
+    color="black",
+)
+
+ax_difference.fill_between(
+    CROSS_SECTION_X_KM,
+    0.0,
+    delta_robust_depth,
+    where=(delta_robust_depth >= 0.0),
+    color=SCENARIO_COLORS[COMPARISON_SCENARIO],
+    alpha=0.35,
+    interpolate=True,
+)
+
+ax_difference.fill_between(
+    CROSS_SECTION_X_KM,
+    0.0,
+    delta_robust_depth,
+    where=(delta_robust_depth < 0.0),
+    color=SCENARIO_COLORS[REFERENCE_SCENARIO],
+    alpha=0.35,
+    interpolate=True,
+)
+
+ax_difference.set_xlabel("Along-estuary distance [km]")
+ax_difference.set_ylabel(
+    f"Δ depth [m]\n"
+    f"({COMPARISON_SCENARIO} − {REFERENCE_SCENARIO})"
+)
+ax_difference.grid(True, linestyle="--", alpha=0.55)
+ax_difference.spines["top"].set_visible(False)
+ax_difference.spines["right"].set_visible(False)
+
+fig.tight_layout()
+
+depth_plot_path = OUTPUT_DIR / (
+    f"channel_depth_mean_{N_DEEPEST}_deepest_samples.png"
+)
+fig.savefig(depth_plot_path, dpi=DPI, bbox_inches="tight")
+fig.savefig(depth_plot_path.with_suffix(".pdf"), bbox_inches="tight")
+plt.close(fig)
+
+print(f"Saved: {depth_plot_path.name}")
+
+
+# %%
+# =============================================================================
+# OPTIONAL: STRICT SINGLE-POINT THALWEG DEPTH PLOT
+# =============================================================================
+
+fig, ax = plt.subplots(figsize=(7.0, 3.8))
+
+for scenario_name in SCENARIO_ORDER:
+    ax.plot(
+        CROSS_SECTION_X_KM,
+        thalweg_depth[scenario_name],
+        marker="o",
+        markersize=3.5,
+        linewidth=1.25,
+        color=SCENARIO_COLORS[scenario_name],
+        label=scenario_name,
+    )
+
+ax.set_title("Single-point thalweg depth at final morphological snapshot")
+ax.set_xlabel("Along-estuary distance [km]")
+ax.set_ylabel("Thalweg depth [m]\n(−minimum detrended bed level)")
+ax.grid(True, linestyle="--", alpha=0.55)
+ax.legend(loc="best", frameon=False)
+ax.spines["top"].set_visible(False)
+ax.spines["right"].set_visible(False)
+
+fig.tight_layout()
+
+thalweg_plot_path = OUTPUT_DIR / "channel_depth_single_point_thalweg.png"
+fig.savefig(thalweg_plot_path, dpi=DPI, bbox_inches="tight")
+fig.savefig(thalweg_plot_path.with_suffix(".pdf"), bbox_inches="tight")
+plt.close(fig)
+
+print(f"Saved: {thalweg_plot_path.name}")
+
+
+# %%
+# =============================================================================
+# SAVE DEPTH METRICS AS CSV
+# =============================================================================
+
+csv_path = DATA_OUTPUT_DIR / "channel_depth_metrics.csv"
+
+header = (
+    "x_km,"
+    "pm3_n5_thalweg_bedlevel_m,"
+    "pm5_n1_thalweg_bedlevel_m,"
+    "pm3_n5_robust_deep_bedlevel_m,"
+    "pm5_n1_robust_deep_bedlevel_m,"
+    "pm3_n5_thalweg_depth_m,"
+    "pm5_n1_thalweg_depth_m,"
+    "pm3_n5_robust_depth_m,"
+    "pm5_n1_robust_depth_m,"
+    "delta_thalweg_depth_pm5_n1_minus_pm3_n5_m,"
+    "delta_robust_depth_pm5_n1_minus_pm3_n5_m"
+)
+
+table = np.column_stack(
+    (
+        CROSS_SECTION_X_KM,
+        thalweg_bedlevel[REFERENCE_SCENARIO],
+        thalweg_bedlevel[COMPARISON_SCENARIO],
+        robust_deep_bedlevel[REFERENCE_SCENARIO],
+        robust_deep_bedlevel[COMPARISON_SCENARIO],
+        thalweg_depth[REFERENCE_SCENARIO],
+        thalweg_depth[COMPARISON_SCENARIO],
+        robust_depth[REFERENCE_SCENARIO],
+        robust_depth[COMPARISON_SCENARIO],
+        delta_thalweg_depth,
+        delta_robust_depth,
+    )
+)
+
+np.savetxt(
+    csv_path,
+    table,
+    delimiter=",",
+    header=header,
+    comments="",
+    fmt="%.6f",
+)
+
+print(f"Saved: {csv_path.name}")
+
+
+# %%
+# =============================================================================
+# FINISH
+# =============================================================================
+
+print("\n" + "=" * 80)
+print("CROSS-SECTION PROFILE AND CHANNEL-DEPTH ANALYSIS COMPLETE")
+print("=" * 80)
+print(f"Output directory:\n{OUTPUT_DIR}")
+print("\nSelected cached MAP times:")
+for scenario_name in SCENARIO_ORDER:
+    print(f"  {scenario_name}: {selected_times[scenario_name]}")
+print("\nDepth convention:")
+print(
+    "  Positive channel depth = negative detrended bed elevation multiplied by −1."
+)
+print(
+    f"  Robust depth = −mean of the {N_DEEPEST} deepest sampled "
+    "bed-level values."
+)
+print(
+    f"  Positive Δ depth = {COMPARISON_SCENARIO} is deeper than "
+    f"{REFERENCE_SCENARIO}."
+)
+print("=" * 80)
