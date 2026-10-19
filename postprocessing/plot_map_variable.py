@@ -45,7 +45,7 @@ if STYLE == 'AGU':
 _tc = plt.rcParams['text.color']
 
 # --- Variable selection ---
-var_names = ['mesh2d_mor_bl']#, 'mesh2d_s1', 'mesh2d_taus']  # e.g. ['mesh2d_mor_bl'] or all three
+var_names = ['mesh2d_mor_bl', 'mesh2d_sxtot', 'mesh2d_sytot']  # e.g. ['mesh2d_mor_bl'] or all three
 target_hydrodynamic_date = None#'2031-01-01' #'2055-12-31' # e.g. '2055-12-31'; when set, nearest timestep is used per run
 
 # Detrending settings (applies to bed level variable only)
