@@ -29,7 +29,7 @@ from FUNCTIONS.FUNCS_plot_discharge_scenarios import plot_discharge_scenarios_fi
 
 #%% ── Configuration ──────────────────────────────────────────────────────────
 
-total_discharge = 500          # mean river discharge [m³/s]
+total_discharge = 1000          # mean river discharge [m³/s]
 nyears          = 7            # length of the generated timeseries
 duration_min    = 365.25 * 24 * 60 * nyears
 time_step_rcel  = 1440         # 1 day [minutes]

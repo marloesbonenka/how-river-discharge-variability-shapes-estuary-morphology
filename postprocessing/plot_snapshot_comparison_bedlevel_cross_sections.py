@@ -105,7 +105,7 @@ WATER_LEVEL_KM_M = [(20, 2.1), (35, 2.7), (44, 4.3)]   # (x [km], water level [m
 WET_MARGIN_M = 1.0        # wet = bed < water level + margin (includes bars just above water)
 MAX_BAR_WIDTH_M = 400.0   # dry stretches narrower than this, between wet samples, are bars (kept)
 CHANNEL_INIT_THRESHOLD = 2.2   # 'frozen' / 'union': channel = bed below this [m]
-MASK_MODE = {"p5": "frozen", "p95": "frozen"}   # per metric: 'frozen' | 'union' | 'envelope'
+MASK_MODE = {"p5": "union", "p95": "union"}   # per metric: 'frozen' | 'union' | 'envelope'
 
 P_KEYS = [f"p{p}" for p in PERCENTILES]
 MASK_TAG = "_".join(f"{k}-{MASK_MODE[k]}" for k in P_KEYS)   # e.g. p5-envelope_p95-union (in file names)

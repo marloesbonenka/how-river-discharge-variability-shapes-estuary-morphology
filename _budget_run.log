@@ -1,0 +1,416 @@
+
+================================================================================
+Processing: constant
+Folder: U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\detailed-hydro-run\dhr_01_Qr500_pm1_n0.9724783
+================================================================================
+[map-cache] Scenario: dhr_01_Qr500_pm1_n0.9724783
+C:\Users\marloesbonenka\AppData\Local\miniforge3\envs\estuary-env\Lib\site-packages\google\api_core\_python_version_support.py:255: FutureWarning: You are using a Python version (3.11.15) which Google will stop supporting in new releases of google.api_core once it reaches its end of life (2027-10-24). Please upgrade to the latest Python version, or at least Python 3.12, to continue receiving updates for google.api_core past that date.
+  warnings.warn(message, FutureWarning)
+[map-cache]   cache is up-to-date, skipping map-partition reload
+  Face dimension: mesh2d_nFaces; summing over: ['nSedTot']; using 31200 of 54627 faces
+  Time span: 48.0 h of model time (49 outputs, mean interval 1.00 h)
+  Units attribute of mesh2d_sxtot: 'm3 s-1 m-1' -> volume_solid
+  Measured bed-level change (mesh2d_mor_bl, last - first output): max |dz| = 0.0266 m over 2.00 d
+  Channel area in the zoom window: wet 24.83 km2, bed level < 2.2 m 40.66 km2, overlap 19.64 km2
+  Reading 49 timesteps in blocks of 50 ...
+Loading 'cross_section_bedload_sediment_transport' from cache: U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\cached_data\hisoutput_dhr_01_Qr500_pm1_n0_9724783_cross_section_bedload_sediment_transport.nc
+Loading 'cross_section_discharge' from cache: U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\cached_data\hisoutput_dhr_01_Qr500_pm1_n0_9724783_cross_section_discharge.nc
+Loading 'cross_section_suspended_sediment_transport' from cache: U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\cached_data\hisoutput_dhr_01_Qr500_pm1_n0_9724783_cross_section_suspended_sediment_transport.nc
+  [HIS] sections are NOT at the zone edges, so the HIS zones are shifted (compare with care): km20 at 20.01, km25 at 25.11, km30 at 30.30, km35 at 35.31, km40 at 40.41, km45 at 44.92
+  [HIS] seaward sign per section (from mean discharge): km20.011:+, km25.111:+, km30.296:+, km35.311:+, km40.411:+, km44.916:+
+  Saved: mean_transport_vectors.png / .pdf
+  Saved: cumulative_transport_net_mag.png / .pdf
+  Saved: cumulative_transport_gross.png / .pdf
+  Saved: cumulative_transport_directionality.png / .pdf
+  Saved: potential_erosion_deposition.png / .pdf
+  Saved: measured_bed_change.png / .pdf
+  Saved: cross_section_flux_timeseries.png / .pdf
+  Saved: zone_cumulative_volume.png / .pdf
+  Saved: boundary_flux_seaward_positive.csv
+  Saved: zone_cumulative_volume.csv
+  Saved: final_zone_budget.csv
+  Zone budget over the run [m3 bed, + = deposition]; MAP sections span y = 5-10 km:
+    zone        MAP sect.  HIS sect.   bed dz strip   bed dz full width
+    20-25 km      -20.19     -12.37        -30.67           -30.67
+    25-30 km      -75.87       -129        -73.48           -73.48
+    30-35 km      -95.09     -88.18        -89.57           -89.57
+    35-40 km      -104.2     -43.54        -94.12           -94.12
+    40-45 km      -91.49     -131.2        -116.8           -116.8
+    total         -386.8     -404.4        -404.7           -404.7
+    The zone budget is a small difference of two large fluxes; a few percent error in a section flux
+    already changes (or reverses) a zone. The totals over 20-45 km are far less sensitive. bed dz is
+    the reference (exact zone edges); the HIS sections are shifted from the zone edges. Strip and full
+    width differ when sediment moves outside the strip.
+    largest MAP-HIS difference over time: 32.5% of the largest HIS zone volume
+  Saved: zone_volume_map_vs_his.csv
+  Directionality (net/gross), wet faces with transport:
+    20-25 km: median 0.645, 10th percentile 0.198
+    25-30 km: median 0.953, 10th percentile 0.597
+    30-35 km: median 0.997, 10th percentile 0.913
+    35-40 km: median 1.000, 10th percentile 0.994
+    40-45 km: median 1.000, 10th percentile 0.999
+  Saved: channel_infilling_xt.png / .pdf
+  Saved U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\detailed-hydro-run\output_plots\sediment_budgets\constant\channel_infilling.gif
+  Saved: channel_infilling_profile.csv
+  Budget closure per zone [m3/s, + = deposition]:
+    zone         sections   all cells  (sides)    channel     other   channel area share
+    20-25 km    -0.000117   -0.000101  1.63e-05   -0.00522    0.00511    15.0%
+    25-30 km    -0.000439   -0.000502 -6.31e-05   -0.00855    0.00805    16.3%
+    30-35 km     -0.00055   -0.000481  6.88e-05   -0.00598     0.0055    21.5%
+    35-40 km    -0.000603   -0.000569  3.36e-05   -0.00536    0.00479    21.4%
+    40-45 km    -0.000529   -0.000612 -8.24e-05   -0.00259    0.00198    17.2%
+  Model transport / recomputed MPM capacity (per wet face): median 0.85, 10-90% 0.36-2.00 (~1 means the formula and parameters reproduce the model)
+  Section flux / net capacity: median 0.66 (~1 = net capacity explains the net flux; the gap to gross capacity is tidal back-and-forth transport)
+  Capacity/flux profiles are time means over 2031-01-01T00:00 to 2031-01-03T00:00 (49 outputs)
+  Saved: capacity_vs_flux_profile.csv
+  Saved: capacity_vs_flux_deposition.csv
+  Saved U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\detailed-hydro-run\output_plots\sediment_budgets\constant\capacity_vs_flux.gif
+  Final zone volumes [m3] (measured bed-level change): [ -31  -73  -90  -94 -117]
+
+================================================================================
+Processing: pm3_n5_mean_flow
+Folder: U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\detailed-hydro-run\dhr_03_Qr500_pm3_n5_mean.964903
+================================================================================
+[map-cache] Scenario: dhr_03_Qr500_pm3_n5_mean.964903
+[map-cache]   cache is up-to-date, skipping map-partition reload
+  Face dimension: mesh2d_nFaces; summing over: ['nSedTot']; using 31200 of 54627 faces
+  Time span: 48.0 h of model time (49 outputs, mean interval 1.00 h)
+  Units attribute of mesh2d_sxtot: 'm3 s-1 m-1' -> volume_solid
+  Measured bed-level change (mesh2d_mor_bl, last - first output): max |dz| = 0.0427 m over 2.00 d
+  Channel area in the zoom window: wet 27.43 km2, bed level < 2.2 m 38.67 km2, overlap 20.37 km2
+  Reading 49 timesteps in blocks of 50 ...
+Loading 'cross_section_bedload_sediment_transport' from cache: U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\cached_data\hisoutput_dhr_03_Qr500_pm3_n5_mean_964903_cross_section_bedload_sediment_transport.nc
+Loading 'cross_section_discharge' from cache: U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\cached_data\hisoutput_dhr_03_Qr500_pm3_n5_mean_964903_cross_section_discharge.nc
+Loading 'cross_section_suspended_sediment_transport' from cache: U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\cached_data\hisoutput_dhr_03_Qr500_pm3_n5_mean_964903_cross_section_suspended_sediment_transport.nc
+  [HIS] sections are NOT at the zone edges, so the HIS zones are shifted (compare with care): km20 at 20.01, km25 at 25.11, km30 at 30.30, km35 at 35.31, km40 at 40.41, km45 at 44.92
+  [HIS] seaward sign per section (from mean discharge): km20.011:+, km25.111:+, km30.296:+, km35.311:+, km40.411:+, km44.916:+
+  Saved: mean_transport_vectors.png / .pdf
+  Saved: cumulative_transport_net_mag.png / .pdf
+  Saved: cumulative_transport_gross.png / .pdf
+  Saved: cumulative_transport_directionality.png / .pdf
+  Saved: potential_erosion_deposition.png / .pdf
+  Saved: measured_bed_change.png / .pdf
+  Saved: cross_section_flux_timeseries.png / .pdf
+  Saved: zone_cumulative_volume.png / .pdf
+  Saved: boundary_flux_seaward_positive.csv
+  Saved: zone_cumulative_volume.csv
+  Saved: final_zone_budget.csv
+  Zone budget over the run [m3 bed, + = deposition]; MAP sections span y = 5-10 km:
+    zone        MAP sect.  HIS sect.   bed dz strip   bed dz full width
+    20-25 km      -155.3       -162          -165           -165.1
+    25-30 km      -176.1     -130.8        -179.1           -179.1
+    30-35 km      -36.82     -119.3        -31.78           -31.78
+    35-40 km      -56.86     -30.36        -68.56           -68.56
+    40-45 km      -208.9     -200.9        -202.1           -202.1
+    total         -633.9     -643.5        -646.6           -646.7
+    The zone budget is a small difference of two large fluxes; a few percent error in a section flux
+    already changes (or reverses) a zone. The totals over 20-45 km are far less sensitive. bed dz is
+    the reference (exact zone edges); the HIS sections are shifted from the zone edges. Strip and full
+    width differ when sediment moves outside the strip.
+    largest MAP-HIS difference over time: 33.9% of the largest HIS zone volume
+  Saved: zone_volume_map_vs_his.csv
+  Directionality (net/gross), wet faces with transport:
+    20-25 km: median 0.732, 10th percentile 0.252
+    25-30 km: median 0.990, 10th percentile 0.847
+    30-35 km: median 1.000, 10th percentile 0.984
+    35-40 km: median 1.000, 10th percentile 0.997
+    40-45 km: median 1.000, 10th percentile 0.999
+  Saved: channel_infilling_xt.png / .pdf
+  Saved U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\detailed-hydro-run\output_plots\sediment_budgets\pm3_n5_mean_flow\channel_infilling.gif
+  Saved: channel_infilling_profile.csv
+  Budget closure per zone [m3/s, + = deposition]:
+    zone         sections   all cells  (sides)    channel     other   channel area share
+    20-25 km    -0.000899   -0.000985 -8.61e-05   -0.00875    0.00776    16.4%
+    25-30 km     -0.00102    -0.00101  6.16e-06   -0.00901      0.008    19.1%
+    30-35 km    -0.000213   -0.000135  7.78e-05   -0.00282    0.00269    26.0%
+    35-40 km    -0.000329   -0.000561 -0.000232   -0.00065   8.92e-05    22.6%
+    40-45 km     -0.00121    -0.00106  0.000145   -0.00129   0.000226    16.5%
+  Model transport / recomputed MPM capacity (per wet face): median 0.86, 10-90% 0.36-2.52 (~1 means the formula and parameters reproduce the model)
+  Section flux / net capacity: median 0.63 (~1 = net capacity explains the net flux; the gap to gross capacity is tidal back-and-forth transport)
+  Capacity/flux profiles are time means over 2031-01-01T00:00 to 2031-01-03T00:00 (49 outputs)
+  Saved: capacity_vs_flux_profile.csv
+  Saved: capacity_vs_flux_deposition.csv
+  Saved U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\detailed-hydro-run\output_plots\sediment_budgets\pm3_n5_mean_flow\capacity_vs_flux.gif
+  Final zone volumes [m3] (measured bed-level change): [-165 -179  -32  -69 -202]
+
+================================================================================
+Processing: pm5_n1_mean_flow
+Folder: U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\detailed-hydro-run\dhr_05_Qr500_pm5_n1_mean.964908
+================================================================================
+[map-cache] Scenario: dhr_05_Qr500_pm5_n1_mean.964908
+[map-cache]   cache is up-to-date, skipping map-partition reload
+  Face dimension: mesh2d_nFaces; summing over: ['nSedTot']; using 31200 of 54627 faces
+  Time span: 48.0 h of model time (49 outputs, mean interval 1.00 h)
+  Units attribute of mesh2d_sxtot: 'm3 s-1 m-1' -> volume_solid
+  Measured bed-level change (mesh2d_mor_bl, last - first output): max |dz| = 0.0501 m over 2.00 d
+  Channel area in the zoom window: wet 25.71 km2, bed level < 2.2 m 38.10 km2, overlap 18.46 km2
+  Reading 49 timesteps in blocks of 50 ...
+Loading 'cross_section_bedload_sediment_transport' from cache: U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\cached_data\hisoutput_dhr_05_Qr500_pm5_n1_mean_964908_cross_section_bedload_sediment_transport.nc
+Loading 'cross_section_discharge' from cache: U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\cached_data\hisoutput_dhr_05_Qr500_pm5_n1_mean_964908_cross_section_discharge.nc
+Loading 'cross_section_suspended_sediment_transport' from cache: U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\cached_data\hisoutput_dhr_05_Qr500_pm5_n1_mean_964908_cross_section_suspended_sediment_transport.nc
+  [HIS] sections are NOT at the zone edges, so the HIS zones are shifted (compare with care): km20 at 20.01, km25 at 25.11, km30 at 30.30, km35 at 35.31, km40 at 40.41, km45 at 44.92
+  [HIS] seaward sign per section (from mean discharge): km20.011:+, km25.111:+, km30.296:+, km35.311:+, km40.411:+, km44.916:+
+  Saved: mean_transport_vectors.png / .pdf
+  Saved: cumulative_transport_net_mag.png / .pdf
+  Saved: cumulative_transport_gross.png / .pdf
+  Saved: cumulative_transport_directionality.png / .pdf
+  Saved: potential_erosion_deposition.png / .pdf
+  Saved: measured_bed_change.png / .pdf
+  Saved: cross_section_flux_timeseries.png / .pdf
+  Saved: zone_cumulative_volume.png / .pdf
+  Saved: boundary_flux_seaward_positive.csv
+  Saved: zone_cumulative_volume.csv
+  Saved: final_zone_budget.csv
+  Zone budget over the run [m3 bed, + = deposition]; MAP sections span y = 5-10 km:
+    zone        MAP sect.  HIS sect.   bed dz strip   bed dz full width
+    20-25 km      -51.46     -19.37        -43.19            -43.2
+    25-30 km       24.88     -146.1        -43.09           -43.09
+    30-35 km      -245.8     -141.5        -183.8           -183.8
+    35-40 km      -68.22     -74.21        -100.1           -100.1
+    40-45 km      -160.9     -131.8        -143.4           -143.4
+    total         -501.5       -513        -513.7           -513.7
+    The zone budget is a small difference of two large fluxes; a few percent error in a section flux
+    already changes (or reverses) a zone. The totals over 20-45 km are far less sensitive. bed dz is
+    the reference (exact zone edges); the HIS sections are shifted from the zone edges. Strip and full
+    width differ when sediment moves outside the strip.
+    largest MAP-HIS difference over time: 84.3% of the largest HIS zone volume
+  Saved: zone_volume_map_vs_his.csv
+  Directionality (net/gross), wet faces with transport:
+    20-25 km: median 0.735, 10th percentile 0.271
+    25-30 km: median 0.986, 10th percentile 0.809
+    30-35 km: median 0.999, 10th percentile 0.980
+    35-40 km: median 1.000, 10th percentile 0.997
+    40-45 km: median 1.000, 10th percentile 1.000
+  Saved: channel_infilling_xt.png / .pdf
+  Saved U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\detailed-hydro-run\output_plots\sediment_budgets\pm5_n1_mean_flow\channel_infilling.gif
+  Saved: channel_infilling_profile.csv
+  Budget closure per zone [m3/s, + = deposition]:
+    zone         sections   all cells  (sides)    channel     other   channel area share
+    20-25 km    -0.000298   -0.000248  4.99e-05   -0.00653    0.00628    14.2%
+    25-30 km     0.000144   -7.12e-05 -0.000215   -0.00638    0.00631    16.5%
+    30-35 km     -0.00142    -0.00127  0.000156   -0.00421    0.00294    25.4%
+    35-40 km    -0.000395   -0.000445 -5.01e-05  -0.000967   0.000522    22.6%
+    40-45 km    -0.000931   -0.000882  4.99e-05  -0.000761  -0.000121    14.7%
+  Model transport / recomputed MPM capacity (per wet face): median 0.87, 10-90% 0.34-2.65 (~1 means the formula and parameters reproduce the model)
+  Section flux / net capacity: median 0.64 (~1 = net capacity explains the net flux; the gap to gross capacity is tidal back-and-forth transport)
+  Capacity/flux profiles are time means over 2031-01-01T00:00 to 2031-01-03T00:00 (49 outputs)
+  Saved: capacity_vs_flux_profile.csv
+  Saved: capacity_vs_flux_deposition.csv
+  Saved U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\detailed-hydro-run\output_plots\sediment_budgets\pm5_n1_mean_flow\capacity_vs_flux.gif
+  Final zone volumes [m3] (measured bed-level change): [ -43  -43 -184 -100 -143]
+
+================================================================================
+Processing: pm3_n5_peak_flow
+Folder: U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\detailed-hydro-run\dhr_03_Qr500_pm3_n5_peak.964907
+================================================================================
+[map-cache] Scenario: dhr_03_Qr500_pm3_n5_peak.964907
+[map-cache]   cache is up-to-date, skipping map-partition reload
+  Face dimension: mesh2d_nFaces; summing over: ['nSedTot']; using 31200 of 54627 faces
+  Time span: 48.0 h of model time (49 outputs, mean interval 1.00 h)
+  Units attribute of mesh2d_sxtot: 'm3 s-1 m-1' -> volume_solid
+  Measured bed-level change (mesh2d_mor_bl, last - first output): max |dz| = 0.312 m over 2.00 d
+  Channel area in the zoom window: wet 39.68 km2, bed level < 2.2 m 38.67 km2, overlap 29.78 km2
+  Channel footprint taken from pm3_n5_mean_flow.
+  Reading 49 timesteps in blocks of 50 ...
+Loading 'cross_section_bedload_sediment_transport' from cache: U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\cached_data\hisoutput_dhr_03_Qr500_pm3_n5_peak_964907_cross_section_bedload_sediment_transport.nc
+Loading 'cross_section_discharge' from cache: U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\cached_data\hisoutput_dhr_03_Qr500_pm3_n5_peak_964907_cross_section_discharge.nc
+Loading 'cross_section_suspended_sediment_transport' from cache: U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\cached_data\hisoutput_dhr_03_Qr500_pm3_n5_peak_964907_cross_section_suspended_sediment_transport.nc
+  [HIS] sections are NOT at the zone edges, so the HIS zones are shifted (compare with care): km20 at 20.01, km25 at 25.11, km30 at 30.30, km35 at 35.31, km40 at 40.41, km45 at 44.92
+  [HIS] seaward sign per section (from mean discharge): km20.011:+, km25.111:+, km30.296:+, km35.311:+, km40.411:+, km44.916:+
+  Saved: mean_transport_vectors.png / .pdf
+  Saved: cumulative_transport_net_mag.png / .pdf
+  Saved: cumulative_transport_gross.png / .pdf
+  Saved: cumulative_transport_directionality.png / .pdf
+  Saved: potential_erosion_deposition.png / .pdf
+  Saved: measured_bed_change.png / .pdf
+  Saved: cross_section_flux_timeseries.png / .pdf
+  Saved: zone_cumulative_volume.png / .pdf
+  Saved: boundary_flux_seaward_positive.csv
+  Saved: zone_cumulative_volume.csv
+  Saved: final_zone_budget.csv
+  Zone budget over the run [m3 bed, + = deposition]; MAP sections span y = 5-10 km:
+    zone        MAP sect.  HIS sect.   bed dz strip   bed dz full width
+    20-25 km       372.6      504.3         254.9            254.8
+    25-30 km        1283       3610          1701             1701
+    30-35 km        2085     -975.4          1669             1669
+    35-40 km       -1777     -241.1         -1463            -1463
+    40-45 km        1227      279.3           976              976
+    total           3190       3177          3138             3138
+    The zone budget is a small difference of two large fluxes; a few percent error in a section flux
+    already changes (or reverses) a zone. The totals over 20-45 km are far less sensitive. bed dz is
+    the reference (exact zone edges); the HIS sections are shifted from the zone edges. Strip and full
+    width differ when sediment moves outside the strip.
+    largest MAP-HIS difference over time: 84.8% of the largest HIS zone volume
+  Saved: zone_volume_map_vs_his.csv
+  Directionality (net/gross), wet faces with transport:
+    20-25 km: median 0.984, 10th percentile 0.855
+    25-30 km: median 0.999, 10th percentile 0.982
+    30-35 km: median 1.000, 10th percentile 0.994
+    35-40 km: median 1.000, 10th percentile 0.994
+    40-45 km: median 1.000, 10th percentile 0.995
+  Saved: channel_infilling_xt.png / .pdf
+  Saved U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\detailed-hydro-run\output_plots\sediment_budgets\pm3_n5_peak_flow\channel_infilling.gif
+  Saved: channel_infilling_profile.csv
+  Budget closure per zone [m3/s, + = deposition]:
+    zone         sections   all cells  (sides)    channel     other   channel area share
+    20-25 km      0.00216     0.00195 -0.000201    -0.0373     0.0392    16.4%
+    25-30 km      0.00742     0.00842     0.001     -0.035     0.0435    19.1%
+    30-35 km       0.0121      0.0117  -0.00035   -0.00272     0.0144    26.0%
+    35-40 km      -0.0103     -0.0118  -0.00154    -0.0206    0.00875    22.6%
+    40-45 km       0.0071     0.00786  0.000759     -0.002    0.00986    16.5%
+  Model transport / recomputed MPM capacity (per wet face): median 0.89, 10-90% 0.49-1.50 (~1 means the formula and parameters reproduce the model)
+  Section flux / net capacity: median 0.83 (~1 = net capacity explains the net flux; the gap to gross capacity is tidal back-and-forth transport)
+  Capacity/flux profiles are time means over 2031-01-01T00:00 to 2031-01-03T00:00 (49 outputs)
+  Saved: capacity_vs_flux_profile.csv
+  Saved: capacity_vs_flux_deposition.csv
+  Saved U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\detailed-hydro-run\output_plots\sediment_budgets\pm3_n5_peak_flow\capacity_vs_flux.gif
+  Final zone volumes [m3] (measured bed-level change): [  255  1701  1669 -1463   976]
+
+================================================================================
+Processing: pm5_n1_peak_flow
+Folder: U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\detailed-hydro-run\dhr_05_Qr500_pm5_n1_peak.965221
+================================================================================
+[map-cache] Scenario: dhr_05_Qr500_pm5_n1_peak.965221
+[map-cache]   cache is up-to-date, skipping map-partition reload
+  Face dimension: mesh2d_nFaces; summing over: ['nSedTot']; using 31200 of 54627 faces
+  Time span: 48.0 h of model time (49 outputs, mean interval 1.00 h)
+  Units attribute of mesh2d_sxtot: 'm3 s-1 m-1' -> volume_solid
+  Measured bed-level change (mesh2d_mor_bl, last - first output): max |dz| = 0.387 m over 2.00 d
+  Channel area in the zoom window: wet 37.16 km2, bed level < 2.2 m 38.10 km2, overlap 27.06 km2
+  Channel footprint taken from pm5_n1_mean_flow.
+  Reading 49 timesteps in blocks of 50 ...
+Loading 'cross_section_bedload_sediment_transport' from cache: U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\cached_data\hisoutput_dhr_05_Qr500_pm5_n1_peak_965221_cross_section_bedload_sediment_transport.nc
+Loading 'cross_section_discharge' from cache: U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\cached_data\hisoutput_dhr_05_Qr500_pm5_n1_peak_965221_cross_section_discharge.nc
+Loading 'cross_section_suspended_sediment_transport' from cache: U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\cached_data\hisoutput_dhr_05_Qr500_pm5_n1_peak_965221_cross_section_suspended_sediment_transport.nc
+  [HIS] sections are NOT at the zone edges, so the HIS zones are shifted (compare with care): km20 at 20.01, km25 at 25.11, km30 at 30.30, km35 at 35.31, km40 at 40.41, km45 at 44.92
+  [HIS] seaward sign per section (from mean discharge): km20.011:+, km25.111:+, km30.296:+, km35.311:+, km40.411:+, km44.916:+
+  Saved: mean_transport_vectors.png / .pdf
+  Saved: cumulative_transport_net_mag.png / .pdf
+  Saved: cumulative_transport_gross.png / .pdf
+  Saved: cumulative_transport_directionality.png / .pdf
+  Saved: potential_erosion_deposition.png / .pdf
+  Saved: measured_bed_change.png / .pdf
+  Saved: cross_section_flux_timeseries.png / .pdf
+  Saved: zone_cumulative_volume.png / .pdf
+  Saved: boundary_flux_seaward_positive.csv
+  Saved: zone_cumulative_volume.csv
+  Saved: final_zone_budget.csv
+  Zone budget over the run [m3 bed, + = deposition]; MAP sections span y = 5-10 km:
+    zone        MAP sect.  HIS sect.   bed dz strip   bed dz full width
+    20-25 km        1708       1959          1798             1798
+    25-30 km        1775       1054          1334             1334
+    30-35 km       260.4     -525.1         954.4            954.4
+    35-40 km       -1053      948.2         -1702            -1702
+    40-45 km       178.7     -592.6         473.5            473.5
+    total           2869       2844          2859             2859
+    The zone budget is a small difference of two large fluxes; a few percent error in a section flux
+    already changes (or reverses) a zone. The totals over 20-45 km are far less sensitive. bed dz is
+    the reference (exact zone edges); the HIS sections are shifted from the zone edges. Strip and full
+    width differ when sediment moves outside the strip.
+    largest MAP-HIS difference over time: 102.2% of the largest HIS zone volume
+  Saved: zone_volume_map_vs_his.csv
+  Directionality (net/gross), wet faces with transport:
+    20-25 km: median 0.987, 10th percentile 0.877
+    25-30 km: median 0.999, 10th percentile 0.969
+    30-35 km: median 1.000, 10th percentile 0.993
+    35-40 km: median 0.999, 10th percentile 0.992
+    40-45 km: median 1.000, 10th percentile 0.990
+  Saved: channel_infilling_xt.png / .pdf
+  Saved U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\detailed-hydro-run\output_plots\sediment_budgets\pm5_n1_peak_flow\channel_infilling.gif
+  Saved: channel_infilling_profile.csv
+  Budget closure per zone [m3/s, + = deposition]:
+    zone         sections   all cells  (sides)    channel     other   channel area share
+    20-25 km      0.00988      0.0104  0.000491    -0.0445     0.0549    14.2%
+    25-30 km       0.0103     0.00827    -0.002    -0.0227      0.031    16.5%
+    30-35 km      0.00151      0.0018  0.000296   -0.00748    0.00928    25.4%
+    35-40 km     -0.00609    -0.00586  0.000239    -0.0321     0.0262    22.6%
+    40-45 km      0.00103     0.00191  0.000879   -0.00404    0.00595    14.7%
+  Model transport / recomputed MPM capacity (per wet face): median 0.91, 10-90% 0.46-1.63 (~1 means the formula and parameters reproduce the model)
+  Section flux / net capacity: median 0.86 (~1 = net capacity explains the net flux; the gap to gross capacity is tidal back-and-forth transport)
+  Capacity/flux profiles are time means over 2031-01-01T00:00 to 2031-01-03T00:00 (49 outputs)
+  Saved: capacity_vs_flux_profile.csv
+  Saved: capacity_vs_flux_deposition.csv
+  Saved U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\detailed-hydro-run\output_plots\sediment_budgets\pm5_n1_peak_flow\capacity_vs_flux.gif
+  Final zone volumes [m3] (measured bed-level change): [ 1798  1334   954 -1702   473]
+  Saved: comparison_mean_flow_final_zone_budget.png / .pdf
+  Saved: comparison_peak_flow_final_zone_budget.png / .pdf
+  Saved: channel_infilling_peak_vs_mean.png / .pdf
+  Saved: transport_by_bed_level.png / .pdf
+  pm3_n5: share of time at peak flow for zero net change:
+    20-25 km: n/a (same sign in both runs)
+    25-30 km: 9%
+    30-35 km: 2%
+    35-40 km: n/a (same sign in both runs)
+    40-45 km: n/a (same sign in both runs)
+  pm5_n1: share of time at peak flow for zero net change:
+    20-25 km: n/a (same sign in both runs)
+    25-30 km: 39%
+    30-35 km: 7%
+    35-40 km: 26%
+    40-45 km: n/a (same sign in both runs)
+  Saved: channel_infilling_by_zone.png / .pdf
+  Saved: capacity_vs_supply.png / .pdf
+
+Share of the inflow at the river end that stays in the estuary (1 - flux at km 20 / inflow; negative = net erosion):
+  constant             inflow 0.00189 m3/s, outflow at km 20: 0.00413 m3/s, trapped -118%
+  pm3_n5_mean_flow     inflow 0.00125 m3/s, outflow at km 20: 0.00492 m3/s, trapped -292%
+  pm5_n1_mean_flow     inflow 0.00139 m3/s, outflow at km 20: 0.00429 m3/s, trapped -209%
+  pm3_n5_peak_flow     inflow 0.0339 m3/s, outflow at km 20: 0.0154 m3/s, trapped 54%
+  pm5_n1_peak_flow     inflow 0.0304 m3/s, outflow at km 20: 0.0138 m3/s, trapped 55%
+  Saved: channel_local_supply_vs_capacity.png / .pdf
+
+Channel footprint: modelled flux / net capacity (median over the bins with channel and capacity):
+  constant             0.57
+  pm3_n5_mean_flow     0.58
+  pm5_n1_mean_flow     0.59
+  pm3_n5_peak_flow     0.79
+  pm5_n1_peak_flow     0.80
+  ~1 = the channel flux is at capacity everywhere (the bed load responds instantly), so the deposition
+  is set by how the capacity changes along the channel, not by a shortage or surplus of supply.
+  Saved: measured_bed_change_channels_vs_bars.png / .pdf
+
+Channel footprint, area-weighted over the zoom domain [mm/day of bed level, + = infilling]:
+  scenario             predicted    along  lateral  MEASURED
+  constant                 -0.10    -0.00    -0.10     -0.03
+  pm3_n5_mean_flow         -0.07    -0.01    -0.07     -0.02
+  pm5_n1_mean_flow         -0.07    -0.01    -0.06     -0.03
+  pm3_n5_peak_flow         -0.31     0.08    -0.40      0.28
+  pm5_n1_peak_flow         -0.40     0.07    -0.47      0.02
+  predicted = flux divergence of the time-mean transport; MEASURED = change of mesh2d_mor_bl
+  (last - first output) averaged over the same channel cells. They should agree if the
+  transport reconstruction is right and the run morphology is active.
+
+Channel footprint (wet at min water level (depth > 0.1 m, last 12 h), largest connected component only):
+  constant             channel  24.01 km2, isolated pits excluded  0.82 km2 (3%)
+  pm3_n5_mean_flow     channel  26.86 km2, isolated pits excluded  0.56 km2 (2%)
+  pm5_n1_mean_flow     channel  24.66 km2, isolated pits excluded  1.05 km2 (4%)
+  pm3_n5_peak_flow     channel  26.86 km2, isolated pits excluded  0.56 km2 (2%)
+  pm5_n1_peak_flow     channel  24.66 km2, isolated pits excluded  1.05 km2 (4%)
+
+MEASURED bed volume change of the zoom domain [m3 per day, + = gain]: channels vs bars/banks.
+(no transport reconstruction involved; channel gain with bar loss = sediment moved from bars to channels)
+  scenario               channels  bars/banks       sum  channel mm/d  bars mm/d
+  constant                 -667.6       445.7    -221.9         -0.03       0.00
+  pm3_n5_mean_flow         -415.0       135.5    -279.5         -0.02       0.00
+  pm5_n1_mean_flow         -636.2       415.9    -220.3         -0.03       0.00
+  pm3_n5_peak_flow         7390.9     -6273.2    1117.8          0.28      -0.06
+  pm5_n1_peak_flow          492.6       779.2    1271.7          0.02       0.01
+
+================================================================================
+DETAILED-HYDRO SEDIMENT ROUTING AND BUDGET ANALYSIS COMPLETE
+================================================================================
+Output directory:
+U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\detailed-hydro-run\output_plots\sediment_budgets
+
+Transport variables: mesh2d_sxtot, mesh2d_sytot
+POROSITY = 0.39622641509433965, MORFAC = 1.0
+
+Sign convention:
+   Model +x points landward (POSITIVE_X_IS_SEAWARD = False).
+   Displayed cross-section flux: positive = seaward.
+   Zone cumulative volume: positive = convergence = potential deposition.
+
+Interpretation:
+   Short-period routing budgets over the detailed-hydro period.
+   If the runs have a fixed bed, potential bed change is not realised morphology.
+================================================================================
