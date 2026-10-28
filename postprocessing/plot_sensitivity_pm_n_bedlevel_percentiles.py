@@ -1,15 +1,21 @@
-"""pm/n sensitivity analysis – bed level metric (percentile or mean)
+"""pm/n sensitivity analysis – p5 / p95 (or mean) of the raw bed level per 1 km x-bin
 
-Toggle COMPUTE_MEAN to switch between:
-  False (default) → p{depth_percentile} bed level within frozen t=0 channel mask
-  True            → width-averaged mean bed level within frozen t=0 channel mask
+Each metric has its own face population (MASK_MODE), all built from the raw bed:
+  'frozen'   faces below CHANNEL_INIT_THRESHOLD at t=0 (the original method; stable,
+             but blind to channel widening)
+  'union'    faces below CHANNEL_INIT_THRESHOLD at t=0 OR at the snapshot (adds
+             widening; same 2.2 m cut-off, so bank slopes barely enter)
+  'envelope' faces below water level(x) + WET_MARGIN_M at t=0 OR at the snapshot,
+             plus dry stretches narrower than MAX_BAR_WIDTH_M bridged by wet faces
+             (keeps mid-channel bars above the limit; needs the water-level table)
+Defaults: p5 -> 'envelope' (works), p95 -> 'union' (reproduces the original p95 trend).
+Detrended mode uses the same population at t=0 as the reference.
 
 Layout: one subplot per fixed parameter (n or pm), lines per varying parameter.
-Colors follow the same PALETTE as plot_scenario_lines.py.
-Two figure sets per snapshot:
+Two figure sets per snapshot and metric:
   A) Effect of R_peak  – one panel per n_peaks  (colours = R_peak values)
   B) Effect of n_peaks – one panel per R_peak   (colours = n_peaks values)
-Both sets are also saved as normalised / detrended versions.
+Each is saved as absolute, difference-from-constant and detrended versions.
 """
 
 #%% IMPORTS
@@ -27,7 +33,6 @@ from functions.F_general import (
     _date_to_filename_tag,
     _date_to_label,
     _scenario_label,
-    
     _parse_pm_n,
     get_variability_map,
     find_variability_model_folders,
@@ -44,26 +49,34 @@ from functions.F_loaddata import get_stitched_map_run_paths
 
 #%% --- CONFIGURATION ---
 DISCHARGE = 500
-depth_percentile = 2
+METRICS = ['p5', 'p95']   # any of 'pNN' (percentile) or 'mean'
+MASK_MODE = {'p5': 'frozen', 'p95': 'frozen'}   # per metric: 'frozen' | 'union' | 'envelope'
+DEFAULT_MASK_MODE = 'envelope'                   # for metrics not listed above
 
 SHOW_NOISY_ENVELOPE = True
-SHOW_DIFFERENCE = True   # show difference-from-constant plot
-SHOW_DETRENDED  = True   # show detrended plot (change relative to initial bed level)
-COMPUTE_MEAN = False  # True → width-averaged mean; False → p{depth_percentile} within frozen channel mask
+SHOW_DIFFERENCE = False    # difference-from-constant plots
+SHOW_DETRENDED  = False    # detrended plots (change relative to the t=0 estuary)
+SHOW_FIGURES    = False    # plt.show() per figure; False → only save
 
 SNAPSHOT_TARGET_DATES = None
 SNAPSHOT_DATE_RANGE = (np.datetime64('2025-01-01'), np.datetime64('2031-12-31'))
 SNAPSHOT_COUNT = 6
+
 #%% --- CONSTANTS ---
 base_directory = Path(r"U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian")
 config = f'Model_Output/Q{DISCHARGE}'
 
-bed_threshold = 6
-CHANNEL_INIT_THRESHOLD = 2.2  # defines the channel footprint from t=0
-channel_masks = {}  # {folder_str: {bin_idx: boolean array}}
+# Channel populations (see module docstring)
+CHANNEL_INIT_THRESHOLD = 2.2   # 'frozen' / 'union': channel = bed below this [m]
+WATER_LEVEL_KM_M = [(20, 2.1), (35, 2.7), (44, 4.3)]   # (x [km], water level [m]) at Q=500,
+                                                       # linearly interpolated; refine if needed
+WET_MARGIN_M = 1.0        # wet = bed < water level + margin (includes bars just above water)
+MAX_BAR_WIDTH_M = 400.0   # dry stretches narrower than this, between wet faces, are bars (kept)
 
-start_date = np.datetime64('2025-01-01')
 x_targets = np.arange(20000, 44001, 1000)
+X_BINS = np.arange(x_targets[0], x_targets[-1] + 1000, 1000)
+X_CENTERS = (X_BINS[:-1] + X_BINS[1:]) / 2
+X_KM = X_CENTERS / 1000
 y_range = (5000, 10000)
 
 CACHE_BBOX = [1, 1, 45000, 15000]
@@ -97,7 +110,7 @@ if DISCHARGE == 500:
         '12': 'pm5_n4',
         '13': 'pm4_n4',
         '14': 'pm2_n4',
-    }   
+    }
 
 elif DISCHARGE == 1000:
     NOISY_BASE_PATH = Path(r"u:\PhDNaturalRhythmEstuaries\Models\1_RiverDischargeVariability_domain45x15\Model_Output\Q1000\0_Noise_Q1000")
@@ -119,7 +132,6 @@ elif DISCHARGE == 1000:
         # '14': 'pm2_n4',
     }
 
-
 elif DISCHARGE == 250:
     NOISY_BASE_PATH = Path(r"u:\PhDNaturalRhythmEstuaries\Models\1_RiverDischargeVariability_domain45x15\Model_Output\Q250\0_Noise_Q250")
     NOISY_SUBFOLDERS = []
@@ -138,12 +150,12 @@ elif DISCHARGE == 250:
         # '12': 'pm5_n4',
         # '13': 'pm4_n4',
         # '14': 'pm2_n4',
-    }    
-#%% --- SCENARIO LABELS ---
+    }
 
-
-# Constant scenario colour
-GREY_CONST = "#7f7f7f"
+#%% --- PLOT SETTINGS ---
+GREY_CONST = "#7f7f7f"   # constant scenario colour
+RPEAK  = r'$R_{\mathrm{peak}}$'
+NPEAKS = r'$n_{\mathrm{peaks}}$'
 
 # Fixed axes dimensions — same across all figure variants so subplots align
 AX_W, AX_H = 3.5, 3.0   # axes width / height in inches (not panel/figure size)
@@ -154,17 +166,13 @@ _TOP    = 1.30  # top:    panel title + gap + suptitle
 _BOT    = 0.65  # bottom: x-label + ticks
 _WSPACE = 0.10  # gap between panels in inches (small; sharey=True)
 
-# --- Line width ---
-LINE_WIDTH       = 1.8   # width of scenario lines in the plots
+LINE_WIDTH       = 1.8   # width of scenario lines
 LINE_WIDTH_CONST = 1.5   # width of the constant reference line
 
-# --- Font sizes ---
-FONTSIZE_TITLE  = 18   # figure suptitle and panel titles
-FONTSIZE_LABELS = FONTSIZE_TITLE - 4    # axis labels and legend title
+FONTSIZE_TITLE  = 18                     # figure suptitle and panel titles
+FONTSIZE_LABELS = FONTSIZE_TITLE - 4     # axis labels and legend title
 FONTSIZE_TICKS  = FONTSIZE_LABELS - 2    # tick labels and legend text
 
-
-#%% --- FIGURE STYLE ---
 STYLE = 'default'   # 'default'   →  white background, black text
                     # 'whitefig'  →  transparent figure, white axes background, white text
 
@@ -176,9 +184,75 @@ if STYLE == 'whitefig':
     })
 else:
     apply_plot_style('default')
-_tc = plt.rcParams['text.color']                        # convenience: text/title color
-_tr = plt.rcParams.get('savefig.transparent', False)    # convenience: transparent flag for savefig
+_tc = plt.rcParams['text.color']                        # text/title colour
+_tr = plt.rcParams.get('savefig.transparent', False)    # transparent flag for savefig
 
+#%% --- HELPERS ---
+def _metric_value(values, metric):
+    """'mean' or 'pNN' of a 1-D bed-level array (NaN if there are no valid values)."""
+    values = values[~np.isnan(values)]
+    if values.size == 0:
+        return np.nan
+    if metric == 'mean':
+        return values.mean()
+    return np.percentile(values, float(metric[1:]))
+
+
+def _wet_limits():
+    """Bed-level limit per x-bin: water level at the bin centre + WET_MARGIN_M."""
+    wl_km, wl_m = zip(*WATER_LEVEL_KM_M)
+    centres_km = 0.5 * (X_BINS[:-1] + X_BINS[1:]) / 1000.0
+    return np.interp(centres_km, wl_km, wl_m) + WET_MARGIN_M
+
+
+def _estuary_masks(bed_now, init_bl, face_x, face_y, width_mask, wet_limit):
+    """One boolean face mask per x-bin: wet faces plus dry stretches bridged by wet faces."""
+    masks = []
+    for k in range(len(X_BINS) - 1):
+        in_bin = width_mask & (face_x >= X_BINS[k]) & (face_x < X_BINS[k + 1])
+        wet_all = (init_bl < wet_limit[k]) | (bed_now < wet_limit[k])          # NaN -> False
+        mask = np.zeros(in_bin.shape, dtype=bool)
+        idx = np.flatnonzero(in_bin)
+        if idx.size:
+            order = idx[np.argsort(face_y[idx])]
+            ys, wet = face_y[order], wet_all[order]
+            prev_wet_y = np.maximum.accumulate(np.where(wet, ys, -np.inf))
+            next_wet_y = np.minimum.accumulate(np.where(wet, ys, np.inf)[::-1])[::-1]
+            bridged = (next_wet_y - prev_wet_y) <= MAX_BAR_WIDTH_M             # inf -> False
+            mask[order[wet | bridged]] = True
+        masks.append(mask)
+    return masks
+
+
+def _threshold_masks(bed_now, init_bl, face_x, width_mask, mode):
+    """'frozen' / 'union' channel masks per x-bin (bed below CHANNEL_INIT_THRESHOLD)."""
+    low = init_bl < CHANNEL_INIT_THRESHOLD
+    if mode == 'union':
+        low = low | (bed_now < CHANNEL_INIT_THRESHOLD)
+    valid = width_mask & low                                   # NaN -> False
+    return [valid & (face_x >= X_BINS[k]) & (face_x < X_BINS[k + 1]) for k in range(len(X_BINS) - 1)]
+
+
+def _masks_for(mode, bed_now, init_bl, face_x, face_y, width_mask, wet_limit):
+    if mode == 'envelope':
+        return _estuary_masks(bed_now, init_bl, face_x, face_y, width_mask, wet_limit)
+    if mode in ('frozen', 'union'):
+        return _threshold_masks(bed_now, init_bl, face_x, width_mask, mode)
+    raise ValueError(f"Unknown mask mode {mode!r} (use 'frozen', 'union' or 'envelope').")
+
+
+def _profiles(bed_now, init_bl, face_x, face_y, width_mask, wet_limit):
+    """{metric: value per x-bin} using each metric's own population, plus face counts per bin
+    (counts refer to the first metric's population)."""
+    mode_of = {m: MASK_MODE.get(m, DEFAULT_MASK_MODE) for m in METRICS}
+    masks = {mode: _masks_for(mode, bed_now, init_bl, face_x, face_y, width_mask, wet_limit)
+             for mode in set(mode_of.values())}
+    profs = {m: np.array([_metric_value(bed_now[mk], m) for mk in masks[mode_of[m]]]) for m in METRICS}
+    return profs, [int(np.count_nonzero(mk)) for mk in masks[mode_of[METRICS[0]]]]
+
+
+def _fmt(v):
+    return str(int(v)) if v == int(v) else str(v)
 
 #%% --- SEARCH FOLDERS ---
 base_path = base_directory / config
@@ -194,14 +268,13 @@ model_folders = find_variability_model_folders(
 assessment_dir = base_path / 'cached_data'
 assessment_dir.mkdir(parents=True, exist_ok=True)
 timed_out_dir = base_path / 'timed-out'
-sensitivity_output_dir = base_path / 'output_plots' / 'plots_pm_n_sensitivity'
+sensitivity_output_dir = base_path / 'output_plots' / 'plots_pm_n_sensitivity' / 'estuary_envelope'
 sensitivity_output_dir.mkdir(parents=True, exist_ok=True)
 
-
 #%% --- LOAD DATA ---
-comparison_results = {}
+comparison_results = {}   # {snapshot_key: {folder: {'<metric> BedLevel': array, ...}}}
 comparison_labels  = {}
-initial_profiles   = {}  # {folder_str: 1-D array of p{depth_percentile} at t=0}
+initial_profiles   = {}   # {folder: {metric: array}} on the t=0 estuary
 
 target_snapshot_dates = get_target_snapshot_dates(
     count=SNAPSHOT_COUNT,
@@ -227,7 +300,6 @@ for folder in model_folders:
     if not run_paths:
         run_paths = [base_path / folder]
 
-    cache_tag = cache_tag_from_bbox(CACHE_BBOX, CACHE_TAG)
     ds = load_or_update_map_cache_multi(
         cache_dir=assessment_dir,
         folder_name=folder.name,
@@ -236,7 +308,7 @@ for folder in model_folders:
         bbox=CACHE_BBOX,
         append_time=APPEND_TIMESTEPS,
         append_vars=APPEND_VARIABLES,
-        cache_tag=cache_tag,
+        cache_tag=cache_tag_from_bbox(CACHE_BBOX, CACHE_TAG),
     )
     if ds is None:
         print(f"  No cached data for {folder_str}, skipping.")
@@ -250,173 +322,93 @@ for folder in model_folders:
 
     face_x, face_y = _get_face_coords(ds)
     width_mask = (face_y >= y_range[0]) & (face_y <= y_range[1])
-    dx = 1000
-    x_bins = np.arange(x_targets[0], x_targets[-1] + dx, dx)
-    x_centers = (x_bins[:-1] + x_bins[1:]) / 2
 
-    # Initial (t=0) profile — builds frozen channel mask for all plot modes
-    if folder_str not in initial_profiles:
-        _init_bl = ds['mesh2d_mor_bl'].isel(time=0).values.copy()
-        _valid_init = width_mask & (_init_bl < CHANNEL_INIT_THRESHOLD)
-        _init_percs = []
-        channel_masks[folder_str] = {}
-
-        for _k in range(len(x_bins) - 1):
-            _bm = _valid_init & (face_x >= x_bins[_k]) & (face_x < x_bins[_k + 1])
-            channel_masks[folder_str][_k] = _bm  # frozen for all timesteps
-
-            if np.any(_bm):
-                _vd = _init_bl[_bm]
-                _vd = _vd[~np.isnan(_vd)]
-                _init_percs.append(
-                    np.percentile(_vd, depth_percentile) if len(_vd) > 0 else np.nan
-                )
-            else:
-                _init_percs.append(np.nan)
-
-        initial_profiles[folder_str] = np.array(_init_percs)
-        print(f"  Initial profile (t=0) and channel mask computed.")
+    # t=0: reference (detrending) profile
+    init_bl = ds['mesh2d_mor_bl'].isel(time=0).values.copy()
+    wet_limit = _wet_limits()
+    initial_profiles[folder_str], _ = _profiles(init_bl, init_bl, face_x, face_y, width_mask, wet_limit)
+    print(f"  Wet limit per bin: {np.round(wet_limit, 1)}")
+    print("  Population per metric: " + ", ".join(f"{m}={MASK_MODE.get(m, DEFAULT_MASK_MODE)}" for m in METRICS))
 
     for target_dt, ts_idx, actual_dt in snapshot_matches:
-            snapshot_key = f"d{_date_to_filename_tag(target_dt)}"
-            comparison_results.setdefault(snapshot_key, {})
-            comparison_labels[snapshot_key] = _date_to_label(target_dt)
+        snapshot_key = f"d{_date_to_filename_tag(target_dt)}"
+        comparison_results.setdefault(snapshot_key, {})
+        comparison_labels[snapshot_key] = _date_to_label(target_dt)
 
-            bedlev_data = ds['mesh2d_mor_bl'].isel(time=ts_idx).values.copy()
+        bedlev_data = ds['mesh2d_mor_bl'].isel(time=ts_idx).values.copy()
+        profs, counts = _profiles(bedlev_data, init_bl, face_x, face_y, width_mask, wet_limit)
 
-            bin_metrics = []
-            for k in range(len(x_bins) - 1):
-                bin_mask = channel_masks[folder_str][k]  # <-- frozen t=0 channel mask
-                if np.any(bin_mask):
-                    bin_bedlevs = bedlev_data[bin_mask]
-                    bin_bedlevs = bin_bedlevs[~np.isnan(bin_bedlevs)]
-                    if len(bin_bedlevs) > 0:
-                        val = np.mean(bin_bedlevs) if COMPUTE_MEAN else np.percentile(bin_bedlevs, depth_percentile)
-                    else:
-                        val = np.nan
-                    bin_metrics.append(val)
-                else:
-                    bin_metrics.append(np.nan)
-
-            _metric_key = 'BL' if COMPUTE_MEAN else f'p{depth_percentile} BedLevel'
-            comparison_results[snapshot_key][folder_str] = {
-                _metric_key: np.array(bin_metrics),
-                'x_centers': x_centers,
-            }
-            _metric_label = 'mean' if COMPUTE_MEAN else f'p{depth_percentile}'
-            print(f"  Snapshot {_date_to_label(target_dt)}: computed {_metric_label}.")
+        comparison_results[snapshot_key][folder_str] = {
+            **{f'{m} BedLevel': profs[m] for m in METRICS},
+            'x_centers': X_CENTERS,
+        }
+        print(f"  Snapshot {_date_to_label(target_dt)}: computed {', '.join(METRICS)} "
+              f"({sum(counts)} estuary faces, fewest in a bin: {min(counts)}).")
     ds.close()
 
-
 #%% --- LOAD NOISY ENVELOPE DATA ---
-noisy_envelope_data = {}  # populated only when SHOW_NOISY_ENVELOPE is True
+noisy_envelope_data = {}   # {metric: {snapshot_key: {'profiles': [array per run]}}}
 
 if SHOW_NOISY_ENVELOPE:
     if not NOISY_BASE_PATH.exists():
         print(f"[WARNING] Noisy base path not found: {NOISY_BASE_PATH}")
     else:
-        _dx = 1000
-        _x_bins = np.arange(x_targets[0], x_targets[-1] + _dx, _dx)
-        _x_centers = (_x_bins[:-1] + _x_bins[1:]) / 2
+        noisy_cache_dir = NOISY_BASE_PATH / 'cached_data'
+        noisy_cache_dir.mkdir(parents=True, exist_ok=True)
+        noisy_profiles = {}   # {snapshot_key: [{metric: array} per run]}
 
-        _noisy_cache_dir = NOISY_BASE_PATH / 'cached_data'
-        _noisy_cache_dir.mkdir(parents=True, exist_ok=True)
-
-        _noisy_profiles      = {}   # {snapshot_key: [1-D array per run]}
-        _noisy_init_profiles = []   # initial (t=0) profiles from noisy runs (for detrending)
-
-        for _subfolder in NOISY_SUBFOLDERS:
-            _noisy_folder = NOISY_BASE_PATH / _subfolder
-            if not _noisy_folder.exists():
-                print(f"[WARNING] Noisy subfolder not found: {_noisy_folder}")
+        for subfolder in NOISY_SUBFOLDERS:
+            noisy_folder = NOISY_BASE_PATH / subfolder
+            if not noisy_folder.exists():
+                print(f"[WARNING] Noisy subfolder not found: {noisy_folder}")
                 continue
-            print(f"Loading noisy run: {_subfolder}")
+            print(f"Loading noisy run: {subfolder}")
 
-            _ds_n = load_or_update_map_cache_multi(
-                cache_dir=_noisy_cache_dir,
-                folder_name=_subfolder,
-                run_paths=[_noisy_folder],
+            ds_n = load_or_update_map_cache_multi(
+                cache_dir=noisy_cache_dir,
+                folder_name=subfolder,
+                run_paths=[noisy_folder],
                 var_names=['mesh2d_mor_bl'],
                 bbox=CACHE_BBOX,
                 append_time=APPEND_TIMESTEPS,
                 append_vars=APPEND_VARIABLES,
                 cache_tag=cache_tag_from_bbox(CACHE_BBOX, CACHE_TAG),
             )
-            if _ds_n is None:
-                print(f"  No cached data for {_subfolder}, skipping.")
+            if ds_n is None:
+                print(f"  No cached data for {subfolder}, skipping.")
                 continue
 
-            _snaps_n = get_snapshot_matches_by_target_dates(
-                _ds_n.time.values, target_snapshot_dates
-            )
-            _fx_n, _fy_n = _get_face_coords(_ds_n)
-            _wmask_n = (_fy_n >= y_range[0]) & (_fy_n <= y_range[1])
+            snaps_n = get_snapshot_matches_by_target_dates(ds_n.time.values, target_snapshot_dates)
+            fx_n, fy_n = _get_face_coords(ds_n)
+            wmask_n = (fy_n >= y_range[0]) & (fy_n <= y_range[1])
+            init_bl_n = ds_n['mesh2d_mor_bl'].isel(time=0).values.copy()
+            wet_limit_n = _wet_limits()
 
-            # Build frozen t=0 channel mask using CHANNEL_INIT_THRESHOLD
-            _init_bl_n = _ds_n['mesh2d_mor_bl'].isel(time=0).values.copy()
-            _valid_init_n = _wmask_n & (_init_bl_n < CHANNEL_INIT_THRESHOLD)
-            _noisy_channel_masks = {}
-            for _ki in range(len(_x_bins) - 1):
-                _bmi = _valid_init_n & (_fx_n >= _x_bins[_ki]) & (_fx_n < _x_bins[_ki + 1])
-                _noisy_channel_masks[_ki] = _bmi
+            for tdt, ts_idx, adt in snaps_n:
+                snap_key = f"d{_date_to_filename_tag(tdt)}"
+                bl = ds_n['mesh2d_mor_bl'].isel(time=ts_idx).values.copy()
+                profs, _ = _profiles(bl, init_bl_n, fx_n, fy_n, wmask_n, wet_limit_n)
+                noisy_profiles.setdefault(snap_key, []).append(profs)
+                print(f"  {subfolder}: snapshot {_date_to_label(tdt)} OK")
 
-            # Initial (t=0) profile for detrended normalization
-            if SHOW_DETRENDED:
-                _init_percs_n = []
-                for _ki in range(len(_x_bins) - 1):
-                    _bmi = _noisy_channel_masks[_ki]
-                    if np.any(_bmi):
-                        _vdi = _init_bl_n[_bmi]
-                        _vdi = _vdi[~np.isnan(_vdi)]
-                        _init_percs_n.append(
-                            (np.mean(_vdi) if COMPUTE_MEAN else np.percentile(_vdi, depth_percentile))
-                            if len(_vdi) > 0 else np.nan
-                        )
-                    else:
-                        _init_percs_n.append(np.nan)
-                _noisy_init_profiles.append(np.array(_init_percs_n))
+            ds_n.close()
 
-            for _tdt, _ts_idx, _adt in _snaps_n:
-                _snap_key = f"d{_date_to_filename_tag(_tdt)}"
-                _bl = _ds_n['mesh2d_mor_bl'].isel(time=_ts_idx).values.copy()
-
-                _p_bedlevs = []
-                for _k in range(len(_x_bins) - 1):
-                    _bm = _noisy_channel_masks[_k]  # <-- frozen t=0 channel mask
-                    if np.any(_bm):
-                        _vd = _bl[_bm]
-                        _vd = _vd[~np.isnan(_vd)]
-                        _p_bedlevs.append(
-                            (np.mean(_vd) if COMPUTE_MEAN else np.percentile(_vd, depth_percentile))
-                            if len(_vd) > 0 else np.nan
-                        )
-                    else:
-                        _p_bedlevs.append(np.nan)
-
-                _noisy_profiles.setdefault(_snap_key, []).append(np.array(_p_bedlevs))
-                print(f"  {_subfolder}: snapshot {_date_to_label(_tdt)} OK")
-
-            _ds_n.close()
-
-        for _snap_key, _profs in _noisy_profiles.items():
-            if _profs:
-                noisy_envelope_data[_snap_key] = {
-                    'profiles': [_p for _p in _profs],
-                    'x_km':     _x_centers / 1000,
-                }
-                if SHOW_DETRENDED and _noisy_init_profiles:
-                    noisy_envelope_data[_snap_key]['initial_profile'] = np.nanmean(
-                        np.vstack(_noisy_init_profiles), axis=0
-                    )
-        print(f"Noisy envelope ready for {len(noisy_envelope_data)} snapshots.")
-
+        for snap_key, runs in noisy_profiles.items():
+            for m in METRICS:
+                noisy_envelope_data.setdefault(m, {})[snap_key] = {'profiles': [r[m] for r in runs]}
+        print(f"Noisy envelope ready for {len(noisy_profiles)} snapshots.")
 
 #%% --- SENSITIVITY PLOTS ---
-for snapshot_key, snapshot_results in comparison_results.items():
+def plot_snapshot(snapshot_key, snapshot_results, metric):
+    """All figures (A: R_peak effect, B: n_peaks effect; absolute / difference / detrended)
+    for one snapshot and one metric."""
     if not snapshot_results:
-        continue
+        return
 
     is_last_snapshot = (snapshot_key == list(comparison_results.keys())[-1])
+    metric_key = f'{metric} BedLevel'
+    noisy_env = noisy_envelope_data.get(metric, {})
+    has_noisy = SHOW_NOISY_ENVELOPE and snapshot_key in noisy_env
 
     scenario_groups = group_snapshot_by_scenario(snapshot_results)
     all_scen_keys = sort_scenario_keys(scenario_groups.keys())
@@ -425,14 +417,13 @@ for snapshot_key, snapshot_results in comparison_results.items():
     # Parse pm, n for each scenario
     scen_pm_n = {}
     for scen_key in all_scen_keys:
-        label = _scenario_label(scen_key, SCENARIO_LABELS)
-        pm, n = _parse_pm_n(label)
+        pm, n = _parse_pm_n(_scenario_label(scen_key, SCENARIO_LABELS))
         if pm is not None:
             scen_pm_n[scen_key] = (pm, n)
 
     baseline_scen = next((k for k, (pm, n) in scen_pm_n.items() if n == 0), None)
 
-    # Build groupings
+    # Groupings
     pm_by_n = {}   # {n_val: [(pm_val, scen_key), ...]}
     n_by_pm = {}   # {pm_val: [(n_val, scen_key), ...]}
     for scen_key, (pm, n) in scen_pm_n.items():
@@ -440,330 +431,183 @@ for snapshot_key, snapshot_results in comparison_results.items():
             continue
         pm_by_n.setdefault(n, []).append((pm, scen_key))
         n_by_pm.setdefault(pm, []).append((n, scen_key))
-    for n in pm_by_n:
-        pm_by_n[n].sort()
-    for pm in n_by_pm:
-        n_by_pm[pm].sort()
+    for group in (pm_by_n, n_by_pm):
+        for key in group:
+            group[key].sort()
 
     all_pm_vals = sorted({pm for pm, n in scen_pm_n.values() if n > 0})
     all_n_vals  = sorted({n  for pm, n in scen_pm_n.values() if n > 0})
 
     # Colormaps: Blues for pm (light→dark), Greens for n (light→dark)
-    _n_pm = max(len(all_pm_vals) - 1, 1)
-    PM_COLOR = {pm: plt.cm.Blues(0.35 + 0.55 * i / _n_pm) for i, pm in enumerate(all_pm_vals)}
-    _n_n = max(len(all_n_vals) - 1, 1)
-    N_COLOR  = {n:  plt.cm.Greens(0.35 + 0.55 * i / _n_n) for i, n  in enumerate(all_n_vals)}
+    PM_COLOR = {pm: plt.cm.Blues(0.35 + 0.55 * i / max(len(all_pm_vals) - 1, 1))
+                for i, pm in enumerate(all_pm_vals)}
+    N_COLOR  = {n: plt.cm.Greens(0.35 + 0.55 * i / max(len(all_n_vals) - 1, 1))
+                for i, n in enumerate(all_n_vals)}
 
     def _get_y(scen_key):
         """Mean metric bed level across runs (raw bed elevation, negative = deeper)."""
-        _mk = 'BL' if COMPUTE_MEAN else f'p{depth_percentile} BedLevel'
-        y_stack = stack_metric_arrays(scenario_groups[scen_key], _mk)
-        if y_stack is None:
-            return None
-        return np.nanmean(y_stack, axis=0)
-
-    def _get_x(scen_key):
-        x_data = next((d for _, d in scenario_groups[scen_key] if 'x_centers' in d), None)
-        return x_data['x_centers'] / 1000 if x_data else x_targets / 1000
+        y_stack = stack_metric_arrays(scenario_groups[scen_key], metric_key)
+        return None if y_stack is None else np.nanmean(y_stack, axis=0)
 
     def _get_initial_profile(scen_key):
-        """Mean initial (t=0) p{depth_percentile} profile across runs in a scenario."""
-        profs = [initial_profiles[fn] for fn, _ in scenario_groups[scen_key]
+        """Mean t=0 estuary metric profile across the runs of a scenario."""
+        profs = [initial_profiles[fn][metric] for fn, _ in scenario_groups[scen_key]
                  if fn in initial_profiles]
-        if not profs:
-            return None
-        return np.nanmean(np.vstack(profs), axis=0)
+        return np.nanmean(np.vstack(profs), axis=0) if profs else None
 
     y_const = _get_y(baseline_scen) if baseline_scen else None
-    x_const = _get_x(baseline_scen) if baseline_scen else None
-
-    # Precompute detrended references (needed before envelope computation)
     y_init_const = _get_initial_profile(baseline_scen) if baseline_scen else None
-    y_const_det  = (y_const - y_init_const
-                    if y_const is not None and y_init_const is not None else None)
-    _noisy_init  = (noisy_envelope_data[snapshot_key].get('initial_profile')
-                    if SHOW_NOISY_ENVELOPE and snapshot_key in noisy_envelope_data else None)
+    y_const_det = (y_const - y_init_const
+                   if y_const is not None and y_init_const is not None else None)
 
-    # Finalise ±2σ envelope: noisy repeats + constant run
-    if SHOW_NOISY_ENVELOPE and snapshot_key in noisy_envelope_data:
-        _nd = noisy_envelope_data[snapshot_key]
-        if 'profiles' in _nd:
-            # Absolute envelope (used for absolute and difference plot modes)
-            _all_profs = list(_nd['profiles'])
-            if y_const is not None:
-                _all_profs.append(y_const)
-            _stk = np.vstack(_all_profs)
-            _m   = np.nanmean(_stk, axis=0)
-            _s   = np.nanstd(_stk, axis=0)
-            _nd['env_min'] = _m - 2 * _s
-            _nd['env_max'] = _m + 2 * _s
+    # ±2σ natural-variability envelope: noisy repeats + the constant run
+    if has_noisy:
+        nd = noisy_env[snapshot_key]
+        stk = np.vstack(list(nd['profiles']) + ([y_const] if y_const is not None else []))
+        mean, std = np.nanmean(stk, axis=0), np.nanstd(stk, axis=0)
+        nd['env_min'], nd['env_max'] = mean - 2 * std, mean + 2 * std
 
-            # Detrended envelope: built in detrended space so that y_const_det
-            # (detrended by its own initial profile) is correctly encompassed,
-            # even when the noisy model and sensitivity model have different
-            # initial bed levels.
-            _all_det = []
-            for _p in _nd['profiles']:
-                _all_det.append(_p - _noisy_init if _noisy_init is not None else _p)
-            if y_const_det is not None:
-                _all_det.append(y_const_det)
-            if _all_det:
-                _det_stk = np.vstack(_all_det)
-                _det_m = np.nanmean(_det_stk, axis=0)
-                _det_s = np.nanstd(_det_stk, axis=0)
-                _nd['env_min_det'] = _det_m - 2 * _det_s
-                _nd['env_max_det'] = _det_m + 2 * _det_s
-
-    _plot_modes = ['absolute']
+    plot_modes = ['absolute']
     if SHOW_DIFFERENCE:
-        _plot_modes.append('difference')
+        plot_modes.append('difference')
     if SHOW_DETRENDED:
-        _plot_modes.append('detrended')
+        plot_modes.append('detrended')
 
-    for plot_mode in _plot_modes:
+    for plot_mode in plot_modes:
         normalise = (plot_mode == 'difference')
         detrended = (plot_mode == 'detrended')
+        show_env = has_noisy and not detrended   # envelope is not shown in detrended mode
 
-        _metric_desc = 'mean' if COMPUTE_MEAN else f'p{depth_percentile}'
         if plot_mode == 'absolute':
-            norm_tag   = ''
-            norm_title = ''
-            ylabel     = f'{_metric_desc} bed level [m]'
-            _out_dir   = sensitivity_output_dir
+            norm_tag, norm_title = '', ''
+            ylabel   = f'{metric} bed level [m]'
+            out_dir  = sensitivity_output_dir
         elif plot_mode == 'difference':
-            norm_tag   = '_difference'
-            norm_title = ' (difference from constant)'
-            ylabel     = f'{_metric_desc} bed level \n(difference from constant)  [m]'
-            _out_dir   = sensitivity_output_dir / 'difference_from_Qconstant'
-        else:  # detrended
-            norm_tag   = '_detrended'
-            norm_title = ' (change from initial bed)'
-            ylabel     = f'{_metric_desc} bed level \n(change from initial bed)  [m]'
-            _out_dir   = sensitivity_output_dir / 'detrended'
-        _out_dir.mkdir(parents=True, exist_ok=True)
+            norm_tag, norm_title = '_difference', ' (difference from constant)'
+            ylabel   = f'{metric} bed level \n(difference from constant)  [m]'
+            out_dir  = sensitivity_output_dir / 'difference_from_Qconstant'
+        else:
+            norm_tag, norm_title = '_detrended', ' (change from initial bed)'
+            ylabel   = f'{metric} bed level \n(change from initial bed)  [m]'
+            out_dir  = sensitivity_output_dir / 'detrended'
+        out_dir.mkdir(parents=True, exist_ok=True)
 
-        # ---- Figure A: pm-effect, one panel per n ----
-        sorted_n_vals = sorted(pm_by_n.keys())
-        if sorted_n_vals:
-            n_panels = len(sorted_n_vals)
-            _fig_w = _LEFT + n_panels * AX_W + (n_panels - 1) * _WSPACE + _RIGHT
-            _fig_h = _BOT + AX_H + _TOP
-            fig, axes = plt.subplots(
-                1, n_panels,
-                figsize=(_fig_w, _fig_h),
-                sharey=True, sharex=False,
-            )
+        def _series(scen_key):
+            """Line to plot for a scenario in the current mode."""
+            y = _get_y(scen_key)
+            if y is None:
+                return None
+            if normalise and y_const is not None:
+                return y - y_const
+            if detrended:
+                y_init = _get_initial_profile(scen_key)
+                if y_init is not None:
+                    return y - y_init
+            return y
+
+        def _draw_reference(ax):
+            """Constant reference line and natural-variability envelope."""
+            if normalise:
+                ax.axhline(0.0, color=GREY_CONST, linewidth=LINE_WIDTH_CONST, linestyle='--',
+                           label='constant (pm1_n0)', zorder=2)
+            else:
+                y_ref = y_const_det if detrended else y_const
+                if y_ref is not None:
+                    ax.plot(X_KM, y_ref, color=GREY_CONST, linewidth=LINE_WIDTH_CONST,
+                            linestyle='--', label='constant (pm1_n0)', zorder=2)
+            if show_env:
+                emin, emax = noisy_env[snapshot_key]['env_min'], noisy_env[snapshot_key]['env_max']
+                if normalise and y_const is not None:
+                    emin, emax = emin - y_const, emax - y_const
+                ax.fill_between(X_KM, emin, emax, alpha=0.25, color='0.55', zorder=1,
+                                label=r'$\pm 2\sigma$ natural variability')
+
+        def _make_figure(panels, panel_title, color_map, line_label, legend_vals,
+                         varied_symbol, kind, legend_title, legend_y):
+            """One row of panels. panels: {panel_value: [(line_value, scen_key), ...]}."""
+            n_panels = len(panels)
+            fig_w = _LEFT + n_panels * AX_W + (n_panels - 1) * _WSPACE + _RIGHT
+            fig_h = _BOT + AX_H + _TOP
+            fig, axes = plt.subplots(1, n_panels, figsize=(fig_w, fig_h), sharey=True, sharex=False)
             if n_panels == 1:
                 axes = [axes]
 
-            for ci, n_val in enumerate(sorted_n_vals):
+            for ci, panel_val in enumerate(sorted(panels)):
                 ax = axes[ci]
-
-                # Grey dashed constant reference
-                if not normalise and not detrended and y_const is not None:
-                    ax.plot(x_const, y_const, color=GREY_CONST, linewidth=LINE_WIDTH_CONST,
-                            linestyle='--', label='constant (pm1_n0)', zorder=2)
-                if normalise:
-                    ax.axhline(0.0, color=GREY_CONST, linewidth=LINE_WIDTH_CONST, linestyle='--',
-                               label='constant (pm1_n0)', zorder=2)
-                if detrended and y_const_det is not None:
-                    ax.plot(x_const, y_const_det, color=GREY_CONST, linewidth=LINE_WIDTH_CONST,
-                            linestyle='--', label='constant (pm1_n0)', zorder=2)
-
-                # Natural variability envelope (not shown in detrended mode)
-                if SHOW_NOISY_ENVELOPE and not detrended and snapshot_key in noisy_envelope_data:
-                    _env = noisy_envelope_data[snapshot_key]
-                    _emin = _env['env_min'].copy()
-                    _emax = _env['env_max'].copy()
-                    if normalise and y_const is not None:
-                        _emin = _emin - y_const
-                        _emax = _emax - y_const
-                    ax.fill_between(
-                        _env['x_km'], _emin, _emax,
-                        alpha=0.25, color='0.55', zorder=1,
-                        label=r'$\pm 2\sigma$ natural variability',
-                    )
-
-                for pm_val, scen_key in pm_by_n[n_val]:
-                    y = _get_y(scen_key)
+                _draw_reference(ax)
+                for line_val, scen_key in panels[panel_val]:
+                    y = _series(scen_key)
                     if y is None:
                         continue
-                    if normalise and y_const is not None:
-                        y = y - y_const
-                    elif detrended:
-                        _y_init = _get_initial_profile(scen_key)
-                        if _y_init is not None:
-                            y = y - _y_init
-                    x = _get_x(scen_key)
-                    pr_label = str(int(pm_val)) if pm_val == int(pm_val) else str(pm_val)
-                    ax.plot(x, y, color=PM_COLOR[pm_val], linewidth=LINE_WIDTH,
-                            label=f'$R_{{\\mathrm{{peak}}}}$ = {pr_label}', zorder=3)
+                    ax.plot(X_KM, y, color=color_map[line_val], linewidth=LINE_WIDTH,
+                            label=line_label(line_val), zorder=3)
 
-                ax.set_title(
-                    f'$n_{{\\mathrm{{peaks}}}}$ = {n_val}',
-                    fontsize=FONTSIZE_TITLE, fontweight='bold', pad=5,
-                )
+                ax.set_title(panel_title(panel_val), fontsize=FONTSIZE_TITLE, fontweight='bold', pad=5)
                 ax.grid(True, alpha=0.22, linewidth=0.5)
                 ax.set_xlabel('distance along estuary [km]', fontsize=FONTSIZE_TICKS)
                 ax.tick_params(labelsize=FONTSIZE_TICKS)
                 if ci == 0:
                     ax.set_ylabel(ylabel, fontsize=FONTSIZE_LABELS)
-                    ax.tick_params(axis='y', labelsize=FONTSIZE_TICKS)
 
-            # Shared legend – constant first, then pm values sorted small→large
-            legend_handles = []
-            if SHOW_NOISY_ENVELOPE and not detrended and snapshot_key in noisy_envelope_data:
-                legend_handles.append(
-                    mpatches.Patch(
-                        facecolor='0.55', alpha=0.4,
-                        label=r'$\pm 2\sigma$ natural variability',
-                    )
-                )
-            legend_handles.append(
-                mlines.Line2D([], [], color=GREY_CONST, linewidth=LINE_WIDTH_CONST, linestyle='--',
-                              label='constant (pm1_n0)')
-            )
-            for pm_val in sorted(all_pm_vals):
-                pr_label = str(int(pm_val)) if pm_val == int(pm_val) else str(pm_val)
-                legend_handles.append(
-                    mlines.Line2D([], [], color=PM_COLOR[pm_val], linewidth=LINE_WIDTH,
-                                  linestyle='-', label=f'$R_{{\\mathrm{{peak}}}}$ = {pr_label}')
-                )
-            fig.legend(
-                handles=legend_handles,
-                title_fontsize=FONTSIZE_LABELS, fontsize=FONTSIZE_TICKS, loc='lower center',
-                ncol=len(legend_handles), bbox_to_anchor=(0.5, -0.1), frameon=True,
-            )
+            # Shared legend – envelope, constant, then the varied parameter small→large
+            handles = []
+            if show_env:
+                handles.append(mpatches.Patch(facecolor='0.55', alpha=0.4,
+                                              label=r'$\pm 2\sigma$ natural variability'))
+            handles.append(mlines.Line2D([], [], color=GREY_CONST, linewidth=LINE_WIDTH_CONST,
+                                         linestyle='--', label='constant (pm1_n0)'))
+            for v in legend_vals:
+                handles.append(mlines.Line2D([], [], color=color_map[v], linewidth=LINE_WIDTH,
+                                             linestyle='-', label=line_label(v)))
+            fig.legend(handles=handles, title=legend_title, title_fontsize=FONTSIZE_LABELS,
+                       fontsize=FONTSIZE_TICKS, loc='lower center', ncol=len(handles),
+                       bbox_to_anchor=(0.5, legend_y), frameon=True)
             fig.suptitle(
-                f'Effect of $R_{{\\mathrm{{peak}}}}$ on {_metric_desc} bed level {norm_title}\n'
+                f'Effect of {varied_symbol} on {metric} bed level {norm_title}\n'
                 f'Snapshot: {snap_label},  Q = {DISCHARGE} m³/s',
                 fontsize=FONTSIZE_TITLE, fontweight='bold', y=0.99, color=_tc,
             )
             fig.subplots_adjust(
-                left=_LEFT / _fig_w,
-                right=1 - _RIGHT / _fig_w,
-                bottom=_BOT / _fig_h,
-                top=1 - _TOP / _fig_h,
+                left=_LEFT / fig_w, right=1 - _RIGHT / fig_w,
+                bottom=_BOT / fig_h, top=1 - _TOP / fig_h,
                 wspace=_WSPACE / AX_W,
             )
-            _noisy_tag = 'noisy' if SHOW_NOISY_ENVELOPE else ''
-            fname = f'sensitivity_pm_effect{norm_tag}_{_noisy_tag}_{snap_label}_{STYLE}_Q{DISCHARGE}_{_metric_desc}.png'
-            fig.savefig(_out_dir / fname, dpi=200, bbox_inches='tight', transparent=_tr)
+
+            noisy_tag = 'noisy' if SHOW_NOISY_ENVELOPE else ''
+            fname = f'sensitivity_{kind}_effect{norm_tag}_{noisy_tag}_{snap_label}_{STYLE}_Q{DISCHARGE}_{metric}_{MASK_MODE.get(metric, DEFAULT_MASK_MODE)}.png'
+            fig.savefig(out_dir / fname, dpi=200, bbox_inches='tight', transparent=_tr)
             if is_last_snapshot:
-                fig.savefig(_out_dir / fname.replace('.png', '.pdf'), bbox_inches='tight', transparent=_tr)
-            plt.show()
+                fig.savefig(out_dir / fname.replace('.png', '.pdf'), bbox_inches='tight', transparent=_tr)
+            if SHOW_FIGURES:
+                plt.show()
             plt.close(fig)
             print(f'  Saved: {fname}')
+
+        # ---- Figure A: pm-effect, one panel per n ----
+        if pm_by_n:
+            _make_figure(
+                pm_by_n,
+                panel_title=lambda v: f'{NPEAKS} = {_fmt(v)}',
+                color_map=PM_COLOR,
+                line_label=lambda v: f'{RPEAK} = {_fmt(v)}',
+                legend_vals=all_pm_vals,
+                varied_symbol=RPEAK, kind='pm', legend_title=None, legend_y=-0.1,
+            )
 
         # ---- Figure B: n-effect, one panel per pm ----
-        sorted_pm_vals = sorted(n_by_pm.keys())
-        if sorted_pm_vals:
-            pm_panels = len(sorted_pm_vals)
-            _fig_w = _LEFT + pm_panels * AX_W + (pm_panels - 1) * _WSPACE + _RIGHT
-            _fig_h = _BOT + AX_H + _TOP
-            fig, axes = plt.subplots(
-                1, pm_panels,
-                figsize=(_fig_w, _fig_h),
-                sharey=True, sharex=False,
+        if n_by_pm:
+            _make_figure(
+                n_by_pm,
+                panel_title=lambda v: f'{RPEAK} = {_fmt(v)}',
+                color_map=N_COLOR,
+                line_label=lambda v: f'{NPEAKS} = {_fmt(v)}',
+                legend_vals=all_n_vals,
+                varied_symbol=NPEAKS, kind='n', legend_title='Number of peaks', legend_y=-0.18,
             )
-            if pm_panels == 1:
-                axes = [axes]
 
-            for ci, pm_val in enumerate(sorted_pm_vals):
-                ax = axes[ci]
 
-                if not normalise and not detrended and y_const is not None:
-                    ax.plot(x_const, y_const, color=GREY_CONST, linewidth=LINE_WIDTH_CONST,
-                            linestyle='--', label='constant (pm1_n0)', zorder=2)
-                if normalise:
-                    ax.axhline(0.0, color=GREY_CONST, linewidth=LINE_WIDTH_CONST, linestyle='--',
-                               label='constant (pm1_n0)', zorder=2)
-                if detrended and y_const_det is not None:
-                    ax.plot(x_const, y_const_det, color=GREY_CONST, linewidth=LINE_WIDTH_CONST,
-                            linestyle='--', label='constant (pm1_n0)', zorder=2)
-
-                # Natural variability envelope (not shown in detrended mode)
-                if SHOW_NOISY_ENVELOPE and not detrended and snapshot_key in noisy_envelope_data:
-                    _env = noisy_envelope_data[snapshot_key]
-                    _emin = _env['env_min'].copy()
-                    _emax = _env['env_max'].copy()
-                    if normalise and y_const is not None:
-                        _emin = _emin - y_const
-                        _emax = _emax - y_const
-                    ax.fill_between(
-                        _env['x_km'], _emin, _emax,
-                        alpha=0.25, color='0.55', zorder=1,
-                        label=r'$\pm 2\sigma$ natural variability',
-                    )
-
-                for n_val, scen_key in n_by_pm[pm_val]:
-                    y = _get_y(scen_key)
-                    if y is None:
-                        continue
-                    if normalise and y_const is not None:
-                        y = y - y_const
-                    elif detrended:
-                        _y_init = _get_initial_profile(scen_key)
-                        if _y_init is not None:
-                            y = y - _y_init
-                    x = _get_x(scen_key)
-                    ax.plot(x, y, color=N_COLOR[n_val], linewidth=LINE_WIDTH,
-                            label=f'$n_{{\\mathrm{{peaks}}}}$ = {n_val}', zorder=3)
-
-                pr_label = str(int(pm_val)) if pm_val == int(pm_val) else str(pm_val)
-                ax.set_title(
-                    f'$R_{{\\mathrm{{peak}}}}$ = {pr_label}',
-                    fontsize=FONTSIZE_TITLE, fontweight='bold', pad=5,
-                )
-                ax.grid(True, alpha=0.22, linewidth=0.5)
-                ax.set_xlabel('distance along estuary [km]', fontsize=FONTSIZE_TICKS)
-                ax.tick_params(labelsize=FONTSIZE_TICKS)
-                if ci == 0:
-                    ax.set_ylabel(ylabel, fontsize=FONTSIZE_LABELS)
-                    ax.tick_params(axis='y', labelsize=FONTSIZE_TICKS)
-
-            # Shared legend – constant first, then n values sorted small→large
-            legend_handles = []
-            if SHOW_NOISY_ENVELOPE and not detrended and snapshot_key in noisy_envelope_data:
-                legend_handles.append(
-                    mpatches.Patch(
-                        facecolor='0.55', alpha=0.4,
-                        label=r'$\pm 2\sigma$ natural variability',
-                    )
-                )
-            legend_handles.append(
-                mlines.Line2D([], [], color=GREY_CONST, linewidth=LINE_WIDTH_CONST, linestyle='--',
-                              label='constant (pm1_n0)')
-            )
-            for n_val in sorted(all_n_vals):
-                legend_handles.append(
-                    mlines.Line2D([], [], color=N_COLOR[n_val], linewidth=LINE_WIDTH,
-                                  linestyle='-', label=f'$n_{{\\mathrm{{peaks}}}}$ = {n_val}')
-                )
-            fig.legend(
-                handles=legend_handles, title='Number of peaks',
-                title_fontsize=FONTSIZE_LABELS, fontsize=FONTSIZE_TICKS, loc='lower center',
-                ncol=len(legend_handles), bbox_to_anchor=(0.5, -0.18), frameon=True,
-            )
-            fig.suptitle(
-                f'Effect of $n_{{\\mathrm{{peaks}}}}$ on {_metric_desc} bed level {norm_title}\n'
-                f'Snapshot: {snap_label},  Q = {DISCHARGE} m³/s',
-                fontsize=FONTSIZE_TITLE, fontweight='bold', y=0.99, color=_tc,
-            )
-            fig.subplots_adjust(
-                left=_LEFT / _fig_w,
-                right=1 - _RIGHT / _fig_w,
-                bottom=_BOT / _fig_h,
-                top=1 - _TOP / _fig_h,
-                wspace=_WSPACE / AX_W,
-            )
-            _noisy_tag = 'noisy' if SHOW_NOISY_ENVELOPE else ''
-            fname = f'sensitivity_n_effect{norm_tag}_{_noisy_tag}_{snap_label}_{STYLE}_Q{DISCHARGE}_{_metric_desc}.png'
-            fig.savefig(_out_dir / fname, dpi=200, bbox_inches='tight', transparent=_tr)
-            if is_last_snapshot:
-                fig.savefig(_out_dir / fname.replace('.png', '.pdf'), bbox_inches='tight', transparent=_tr)
-            plt.show()
-            plt.close(fig)
-            print(f'  Saved: {fname}')
+for metric in METRICS:
+    for snapshot_key, snapshot_results in comparison_results.items():
+        plot_snapshot(snapshot_key, snapshot_results, metric)
 
 print("\nDone.")
