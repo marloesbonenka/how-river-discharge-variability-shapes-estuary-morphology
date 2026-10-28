@@ -411,7 +411,7 @@ def plot_snapshot(snapshot_key, snapshot_results, metric):
     y_const_det = (y_const - y_init_const
                    if y_const is not None and y_init_const is not None else None)
 
-    # ±2σ natural-variability envelope: noisy repeats + the constant run
+    # ±2σ autogenic-variability envelope: noisy repeats + the constant run
     if has_noisy:
         nd = noisy_env[snapshot_key]
         stk = np.vstack(list(nd['profiles']) + ([y_const] if y_const is not None else []))
@@ -457,7 +457,7 @@ def plot_snapshot(snapshot_key, snapshot_results, metric):
             return y
 
         def _draw_reference(ax):
-            """Constant reference line and natural-variability envelope."""
+            """Constant reference line and autogenic-variability envelope."""
             if normalise:
                 ax.axhline(0.0, color=GREY_CONST, linewidth=LINE_WIDTH_CONST, linestyle='--',
                            label='constant (pm1_n0)', zorder=2)
@@ -471,7 +471,7 @@ def plot_snapshot(snapshot_key, snapshot_results, metric):
                 if normalise and y_const is not None:
                     emin, emax = emin - y_const, emax - y_const
                 ax.fill_between(X_KM, emin, emax, alpha=0.25, color='0.55', zorder=1,
-                                label=r'$\pm 2\sigma$ natural variability')
+                                label=r'$\pm 2\sigma$ autogenic variability')
 
         def _make_figure(panels, panel_title, color_map, line_label, legend_vals,
                          varied_symbol, kind, legend_title, legend_y):
@@ -504,7 +504,7 @@ def plot_snapshot(snapshot_key, snapshot_results, metric):
             handles = []
             if show_env:
                 handles.append(mpatches.Patch(facecolor='0.55', alpha=0.4,
-                                              label=r'$\pm 2\sigma$ natural variability'))
+                                              label=r'$\pm 2\sigma$ autogenic variability'))
             handles.append(mlines.Line2D([], [], color=GREY_CONST, linewidth=LINE_WIDTH_CONST,
                                          linestyle='--', label='constant (pm1_n0)'))
             for v in legend_vals:

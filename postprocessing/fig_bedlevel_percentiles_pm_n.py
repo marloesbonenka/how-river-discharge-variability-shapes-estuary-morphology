@@ -8,7 +8,7 @@ Layout (AGU style, Calibri 8 pt for all text, 170 mm wide):
 
 Bed-level population per x-bin: MASK_MODE (default 'union': faces below
 CHANNEL_INIT_THRESHOLD at t=0 OR at the snapshot, so channel widening is included);
-see functions/F_bedlevel_percentiles.py. The grey band is the +/-2 sigma natural
+see functions/F_bedlevel_percentiles.py. The grey band is the +/-2 sigma autogenic
 variability of the noisy repeats of the constant run (plus the constant run itself),
 computed on the same population.
 
@@ -70,7 +70,7 @@ CACHE_TAG = None
 APPEND_TIMESTEPS = True
 APPEND_VARIABLES = True
 
-# Natural variability envelope — noisy repeats of the constant scenario
+# Autogenic variability envelope — noisy repeats of the constant scenario
 SHOW_NOISY_ENVELOPE = True
 NOISY_BASE_PATH = Path(
     r"U:\PhDNaturalRhythmEstuaries\Models"
@@ -104,7 +104,7 @@ RPEAK  = r'$R_{\mathrm{peak}}$'
 NPEAKS = r'$n_{\mathrm{peaks}}$'
 
 GREY_CONST = "#7f7f7f"
-ENV_COLOR = '0.85'       # opaque light grey (no alpha: looks the same on any background)
+ENV_COLOR, ENV_ALPHA = '0.55', 0.25
 LINE_WIDTH = 1.0         # scenario lines (plot and legend)
 LINE_WIDTH_CONST = 0.9   # constant reference line (plot and legend)
 
@@ -229,7 +229,7 @@ def _fmt(v):
 y_const_by_metric = {m: (_get_y(baseline_scen, m) if baseline_scen else None) for m in METRICS}
 
 
-#%% --- 5. NATURAL VARIABILITY ENVELOPE (±2σ, per metric) ---
+#%% --- 5. AUTOGENIC VARIABILITY ENVELOPE (±2σ, per metric) ---
 noisy_metric_profiles = {m: [] for m in METRICS}
 
 if SHOW_NOISY_ENVELOPE:
@@ -319,7 +319,7 @@ for r, (metric, row_label) in enumerate(ROW_SPECS):
         ax = axes[r, c]
 
         if SHOW_NOISY_ENVELOPE and env is not None:
-            ax.fill_between(X_KM, env[0], env[1], color=ENV_COLOR, linewidth=0, zorder=1.6)  # above grid (1.5)
+            ax.fill_between(X_KM, env[0], env[1], color=ENV_COLOR, alpha=ENV_ALPHA, linewidth=0, zorder=1)
 
         if y_const is not None:
             ax.plot(X_KM, y_const, color=GREY_CONST, linewidth=LINE_WIDTH_CONST, linestyle='--', zorder=2)
@@ -354,7 +354,7 @@ fig.supxlabel('distance along estuary [km]', x=x_mid,
 legend_handles = []
 if SHOW_NOISY_ENVELOPE and envelope_by_metric:
     legend_handles.append(
-        mpatches.Patch(facecolor=ENV_COLOR, label=r'$\pm 2\sigma$ natural variability')
+        mpatches.Patch(facecolor=ENV_COLOR, alpha=ENV_ALPHA, label=r'$\pm 2\sigma$ autogenic variability')
     )
 legend_handles.append(
     mlines.Line2D([], [], color=GREY_CONST, linewidth=LINE_WIDTH_CONST, linestyle='--', label='constant')
