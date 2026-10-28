@@ -1,5 +1,9 @@
 """pm/n sensitivity analysis – p5 / p95 (or mean) of the raw bed level per 1 km x-bin
 
+Diagnostic version: all snapshots, both figure sets, absolute / difference /
+detrended. The paper figure (single snapshot, p95 + p5 rows) is made by
+fig_bedlevel_percentiles_pm_n.py.
+
 Each metric has its own face population (MASK_MODE), all built from the raw bed:
   'frozen'   faces below CHANNEL_INIT_THRESHOLD at t=0 (the original method; stable,
              but blind to channel widening)
@@ -8,7 +12,7 @@ Each metric has its own face population (MASK_MODE), all built from the raw bed:
   'envelope' faces below water level(x) + WET_MARGIN_M at t=0 OR at the snapshot,
              plus dry stretches narrower than MAX_BAR_WIDTH_M bridged by wet faces
              (keeps mid-channel bars above the limit; needs the water-level table)
-Defaults: p5 -> 'envelope' (works), p95 -> 'union' (reproduces the original p95 trend).
+See functions/F_bedlevel_percentiles.py. Default: 'union' for both metrics.
 Detrended mode uses the same population at t=0 as the reference.
 
 Layout: one subplot per fixed parameter (n or pm), lines per varying parameter.
@@ -46,12 +50,13 @@ from functions.F_general import (
 
 from functions.F_map_cache import cache_tag_from_bbox, load_or_update_map_cache_multi, _get_face_coords
 from functions.F_loaddata import get_stitched_map_run_paths
+from functions.F_bedlevel_percentiles import bedlevel_profiles, wet_limits
 
 #%% --- CONFIGURATION ---
 DISCHARGE = 500
 METRICS = ['p5', 'p95']   # any of 'pNN' (percentile) or 'mean'
-MASK_MODE = {'p5': 'frozen', 'p95': 'frozen'}   # per metric: 'frozen' | 'union' | 'envelope'
-DEFAULT_MASK_MODE = 'envelope'                   # for metrics not listed above
+MASK_MODE = {'p5': 'union', 'p95': 'union'}   # per metric: 'frozen' | 'union' | 'envelope'
+DEFAULT_MASK_MODE = 'union'                    # for metrics not listed above
 
 SHOW_NOISY_ENVELOPE = True
 SHOW_DIFFERENCE = False    # difference-from-constant plots
@@ -188,67 +193,16 @@ _tc = plt.rcParams['text.color']                        # text/title colour
 _tr = plt.rcParams.get('savefig.transparent', False)    # transparent flag for savefig
 
 #%% --- HELPERS ---
-def _metric_value(values, metric):
-    """'mean' or 'pNN' of a 1-D bed-level array (NaN if there are no valid values)."""
-    values = values[~np.isnan(values)]
-    if values.size == 0:
-        return np.nan
-    if metric == 'mean':
-        return values.mean()
-    return np.percentile(values, float(metric[1:]))
+MODE_OF = {m: MASK_MODE.get(m, DEFAULT_MASK_MODE) for m in METRICS}
+WET_LIMIT = wet_limits(X_BINS, WATER_LEVEL_KM_M, WET_MARGIN_M)   # only used by 'envelope'
 
 
-def _wet_limits():
-    """Bed-level limit per x-bin: water level at the bin centre + WET_MARGIN_M."""
-    wl_km, wl_m = zip(*WATER_LEVEL_KM_M)
-    centres_km = 0.5 * (X_BINS[:-1] + X_BINS[1:]) / 1000.0
-    return np.interp(centres_km, wl_km, wl_m) + WET_MARGIN_M
-
-
-def _estuary_masks(bed_now, init_bl, face_x, face_y, width_mask, wet_limit):
-    """One boolean face mask per x-bin: wet faces plus dry stretches bridged by wet faces."""
-    masks = []
-    for k in range(len(X_BINS) - 1):
-        in_bin = width_mask & (face_x >= X_BINS[k]) & (face_x < X_BINS[k + 1])
-        wet_all = (init_bl < wet_limit[k]) | (bed_now < wet_limit[k])          # NaN -> False
-        mask = np.zeros(in_bin.shape, dtype=bool)
-        idx = np.flatnonzero(in_bin)
-        if idx.size:
-            order = idx[np.argsort(face_y[idx])]
-            ys, wet = face_y[order], wet_all[order]
-            prev_wet_y = np.maximum.accumulate(np.where(wet, ys, -np.inf))
-            next_wet_y = np.minimum.accumulate(np.where(wet, ys, np.inf)[::-1])[::-1]
-            bridged = (next_wet_y - prev_wet_y) <= MAX_BAR_WIDTH_M             # inf -> False
-            mask[order[wet | bridged]] = True
-        masks.append(mask)
-    return masks
-
-
-def _threshold_masks(bed_now, init_bl, face_x, width_mask, mode):
-    """'frozen' / 'union' channel masks per x-bin (bed below CHANNEL_INIT_THRESHOLD)."""
-    low = init_bl < CHANNEL_INIT_THRESHOLD
-    if mode == 'union':
-        low = low | (bed_now < CHANNEL_INIT_THRESHOLD)
-    valid = width_mask & low                                   # NaN -> False
-    return [valid & (face_x >= X_BINS[k]) & (face_x < X_BINS[k + 1]) for k in range(len(X_BINS) - 1)]
-
-
-def _masks_for(mode, bed_now, init_bl, face_x, face_y, width_mask, wet_limit):
-    if mode == 'envelope':
-        return _estuary_masks(bed_now, init_bl, face_x, face_y, width_mask, wet_limit)
-    if mode in ('frozen', 'union'):
-        return _threshold_masks(bed_now, init_bl, face_x, width_mask, mode)
-    raise ValueError(f"Unknown mask mode {mode!r} (use 'frozen', 'union' or 'envelope').")
-
-
-def _profiles(bed_now, init_bl, face_x, face_y, width_mask, wet_limit):
+def _profiles(bed_now, init_bl, face_x, face_y, width_mask):
     """{metric: value per x-bin} using each metric's own population, plus face counts per bin
     (counts refer to the first metric's population)."""
-    mode_of = {m: MASK_MODE.get(m, DEFAULT_MASK_MODE) for m in METRICS}
-    masks = {mode: _masks_for(mode, bed_now, init_bl, face_x, face_y, width_mask, wet_limit)
-             for mode in set(mode_of.values())}
-    profs = {m: np.array([_metric_value(bed_now[mk], m) for mk in masks[mode_of[m]]]) for m in METRICS}
-    return profs, [int(np.count_nonzero(mk)) for mk in masks[mode_of[METRICS[0]]]]
+    return bedlevel_profiles(bed_now, init_bl, face_x, face_y, width_mask, X_BINS, METRICS, MODE_OF,
+                             threshold=CHANNEL_INIT_THRESHOLD, wet_limit=WET_LIMIT,
+                             max_bar_width=MAX_BAR_WIDTH_M)
 
 
 def _fmt(v):
@@ -268,7 +222,7 @@ model_folders = find_variability_model_folders(
 assessment_dir = base_path / 'cached_data'
 assessment_dir.mkdir(parents=True, exist_ok=True)
 timed_out_dir = base_path / 'timed-out'
-sensitivity_output_dir = base_path / 'output_plots' / 'plots_pm_n_sensitivity' / 'estuary_envelope'
+sensitivity_output_dir = base_path / 'output_plots' / 'plots_pm_n_sensitivity'
 sensitivity_output_dir.mkdir(parents=True, exist_ok=True)
 
 #%% --- LOAD DATA ---
@@ -325,10 +279,8 @@ for folder in model_folders:
 
     # t=0: reference (detrending) profile
     init_bl = ds['mesh2d_mor_bl'].isel(time=0).values.copy()
-    wet_limit = _wet_limits()
-    initial_profiles[folder_str], _ = _profiles(init_bl, init_bl, face_x, face_y, width_mask, wet_limit)
-    print(f"  Wet limit per bin: {np.round(wet_limit, 1)}")
-    print("  Population per metric: " + ", ".join(f"{m}={MASK_MODE.get(m, DEFAULT_MASK_MODE)}" for m in METRICS))
+    initial_profiles[folder_str], _ = _profiles(init_bl, init_bl, face_x, face_y, width_mask)
+    print("  Population per metric: " + ", ".join(f"{m}={mode}" for m, mode in MODE_OF.items()))
 
     for target_dt, ts_idx, actual_dt in snapshot_matches:
         snapshot_key = f"d{_date_to_filename_tag(target_dt)}"
@@ -336,7 +288,7 @@ for folder in model_folders:
         comparison_labels[snapshot_key] = _date_to_label(target_dt)
 
         bedlev_data = ds['mesh2d_mor_bl'].isel(time=ts_idx).values.copy()
-        profs, counts = _profiles(bedlev_data, init_bl, face_x, face_y, width_mask, wet_limit)
+        profs, counts = _profiles(bedlev_data, init_bl, face_x, face_y, width_mask)
 
         comparison_results[snapshot_key][folder_str] = {
             **{f'{m} BedLevel': profs[m] for m in METRICS},
@@ -382,12 +334,11 @@ if SHOW_NOISY_ENVELOPE:
             fx_n, fy_n = _get_face_coords(ds_n)
             wmask_n = (fy_n >= y_range[0]) & (fy_n <= y_range[1])
             init_bl_n = ds_n['mesh2d_mor_bl'].isel(time=0).values.copy()
-            wet_limit_n = _wet_limits()
 
             for tdt, ts_idx, adt in snaps_n:
                 snap_key = f"d{_date_to_filename_tag(tdt)}"
                 bl = ds_n['mesh2d_mor_bl'].isel(time=ts_idx).values.copy()
-                profs, _ = _profiles(bl, init_bl_n, fx_n, fy_n, wmask_n, wet_limit_n)
+                profs, _ = _profiles(bl, init_bl_n, fx_n, fy_n, wmask_n)
                 noisy_profiles.setdefault(snap_key, []).append(profs)
                 print(f"  {subfolder}: snapshot {_date_to_label(tdt)} OK")
 
@@ -574,7 +525,7 @@ def plot_snapshot(snapshot_key, snapshot_results, metric):
             )
 
             noisy_tag = 'noisy' if SHOW_NOISY_ENVELOPE else ''
-            fname = f'sensitivity_{kind}_effect{norm_tag}_{noisy_tag}_{snap_label}_{STYLE}_Q{DISCHARGE}_{metric}_{MASK_MODE.get(metric, DEFAULT_MASK_MODE)}.png'
+            fname = f'sensitivity_{kind}_effect{norm_tag}_{noisy_tag}_{snap_label}_{STYLE}_Q{DISCHARGE}_{metric}_{MODE_OF[metric]}.png'
             fig.savefig(out_dir / fname, dpi=200, bbox_inches='tight', transparent=_tr)
             if is_last_snapshot:
                 fig.savefig(out_dir / fname.replace('.png', '.pdf'), bbox_inches='tight', transparent=_tr)

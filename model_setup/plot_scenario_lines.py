@@ -9,7 +9,7 @@ peak / mean ratios are overlaid, each with a consistent color.
 Input   : u:/…/Q500/  (scans sub-folders automatically)
 Output  : u:/…/Q500/plots_river_bct/scenario_lines_Q500.png
 
-Style mirrors plot_sensitivity_pm_n_bedlevel_15panel.py: AGU rcParams
+Style mirrors postprocessing/fig_bedlevel_percentiles_pm_n.py: AGU rcParams
 (Calibri, 8pt), gridspec-based spacing with inch-based margins, and a
 single shared legend at the bottom of the figure. Only one row of panels
 is used here (one panel per n_peaks / per peak_ratio).
