@@ -101,8 +101,18 @@ y_span = ZOOM_YLIM[1] - ZOOM_YLIM[0]
 aspect = y_span / x_span  # height / width per panel, from data (equal-aspect map)
 
 fig_width_in = FIGURE_WIDTH_MM * MM_TO_IN
-maps_width_in = fig_width_in * (1 - CBAR_WIDTH_FRACTION)
-panel_width_in = maps_width_in / 2
+
+# Explicit left/right margins (in inches) so the panels use the full AGU width
+# instead of matplotlib's default 12.5% / 10% side margins.
+LEFT_MARGIN_IN = 0.40     # y tick labels + y-axis label
+RIGHT_MARGIN_IN = 0.45    # colorbar tick labels + colorbar label
+GRID_WSPACE = 0.08
+cbar_ratio = 2 * CBAR_WIDTH_FRACTION / (1 - CBAR_WIDTH_FRACTION)
+
+# Panel width as matplotlib's GridSpec will actually draw it (3 columns: 2 maps + colorbar)
+grid_width_in = fig_width_in - LEFT_MARGIN_IN - RIGHT_MARGIN_IN
+mean_cell_width_in = grid_width_in / (3 + GRID_WSPACE * 2)
+panel_width_in = mean_cell_width_in * 3 / (2 + cbar_ratio)
 panel_height_in = panel_width_in * aspect
 
 # Extra vertical room (in inches) reserved for row titles / suptitle / x-axis
@@ -110,15 +120,17 @@ panel_height_in = panel_width_in * aspect
 # squeezed to make space for text.
 ROW_TITLE_GAP_IN = 0.30   # gap between stacked rows, for each row's subplot title
 TOP_MARGIN_IN = 0.55      # space above the top row for the figure suptitle + its own title
-BOTTOM_MARGIN_IN = 0.35   # space below the bottom row for x tick labels + x-axis label
+BOTTOM_MARGIN_IN = 0.42   # space below the bottom row for x tick labels + x-axis label
 
 fig_height_in = panel_height_in * 3 + 2 * ROW_TITLE_GAP_IN + TOP_MARGIN_IN + BOTTOM_MARGIN_IN
 
 fig = plt.figure(figsize=(fig_width_in, fig_height_in))
 gs = gridspec.GridSpec(
     3, 3, figure=fig,
-    width_ratios=[1, 1, 2 * CBAR_WIDTH_FRACTION / (1 - CBAR_WIDTH_FRACTION)],
-    wspace=0.08, hspace=ROW_TITLE_GAP_IN / panel_height_in,
+    width_ratios=[1, 1, cbar_ratio],
+    wspace=GRID_WSPACE, hspace=ROW_TITLE_GAP_IN / panel_height_in,
+    left=LEFT_MARGIN_IN / fig_width_in,
+    right=1 - RIGHT_MARGIN_IN / fig_width_in,
     top=1 - TOP_MARGIN_IN / fig_height_in,
     bottom=BOTTOM_MARGIN_IN / fig_height_in,
 )
@@ -211,6 +223,9 @@ for r, c, q, pm, n, title in panel_defs:
         ax.set_xlim(ZOOM_XLIM)
         ax.set_ylim(ZOOM_YLIM)
     ax.set_title(title, fontsize=8)
+    # AGU panel label: lowercase letter in parentheses; a-c left column, d-f right column
+    ax.text(0.985, 0.95, f"({'abcdef'[c * 3 + r]})", transform=ax.transAxes,
+            ha='right', va='top', fontsize=8)
     ax.xaxis.set_major_formatter(_km_formatter)
     ax.yaxis.set_major_formatter(_km_formatter)
     ax.set_xlabel('')
@@ -227,7 +242,9 @@ cbar = fig.colorbar(pc, cax=cax)
 cbar.set_label(cbar_label)
 
 fig.supxlabel('x [km]')
-fig.supylabel('y [km]')
+# y label on the middle-left panel (instead of fig.supylabel at the figure edge)
+# so it sits right next to the tick labels
+axes[1, 0].set_ylabel('y [km]')
 fig.suptitle(f"{cbar_label} snapshot \u2014 {TARGET_DATE}", fontsize=9, y=0.99)
 
 save_name = f"AGU_{current_cfg['file_tag']}_6panel_{TARGET_DATE}"

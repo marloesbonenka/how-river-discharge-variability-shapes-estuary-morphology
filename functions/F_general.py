@@ -33,6 +33,7 @@ def get_agu_rc(font_size=8, title_delta=1, tick_delta=0, mathtext_font='Calibri'
         'ytick.labelsize': tick_size,
         'legend.fontsize': tick_size,
         'figure.titlesize': font_size + title_delta,
+        'figure.labelsize': font_size,   # fig.supxlabel / fig.supylabel (default 'large')
         'mathtext.fontset': 'custom',
         'mathtext.rm': mathtext_font,
         'mathtext.it': f'{mathtext_font}:italic',
