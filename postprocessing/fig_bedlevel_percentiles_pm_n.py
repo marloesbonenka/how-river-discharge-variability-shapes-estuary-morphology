@@ -47,7 +47,9 @@ DISCHARGE = 500
 BASE_DIR = Path(r"U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output")
 base_path = BASE_DIR / f"Q{DISCHARGE}"
 
-TARGET_DATE = np.datetime64('2031-01-01')   # nearest available timestep per run is used
+# nearest available timestep per run is used; optional override from the command line, e.g.
+# `python fig_bedlevel_percentiles_pm_n.py 2030-01-01` (keep 1 Jan: same hydrograph phase in all runs)
+TARGET_DATE = np.datetime64(sys.argv[1] if len(sys.argv) > 1 else '2031-01-01')
 
 MASK_MODE = 'union'            # 'frozen' | 'union' (see functions/F_bedlevel_percentiles.py)
 CHANNEL_INIT_THRESHOLD = 2.2   # channel = bed below this [m]
@@ -256,14 +258,14 @@ if SHOW_NOISY_ENVELOPE:
                 print(f"  No cached data for {subfolder}, skipping.")
                 continue
 
-            profs_n, _ = _snapshot_profiles(ds_n)
+            profs_n, actual_dt_n = _snapshot_profiles(ds_n)
             ds_n.close()
             if profs_n is None:
                 print(f"  No timesteps found for {subfolder}, skipping.")
                 continue
             for m in METRICS:
                 noisy_metric_profiles[m].append(profs_n[m])
-            print(f"  {subfolder}: OK")
+            print(f"  {subfolder}: snapshot {actual_dt_n}")
 
 envelope_by_metric = {}
 for m, profs in noisy_metric_profiles.items():
@@ -333,6 +335,9 @@ for r, (metric, row_label) in enumerate(ROW_SPECS):
         ax.xaxis.set_major_locator(MultipleLocator(XTICK_STEP_KM))
         ax.yaxis.set_major_locator(MultipleLocator(YTICK_STEP_M))
         ax.grid(True, color='0.9', linewidth=0.5)
+        # AGU panel label: lowercase letter in parentheses, row by row (top-left is free in both rows)
+        ax.text(0.03, 0.95, f"({chr(ord('a') + r * n_cols + c)})", transform=ax.transAxes,
+                ha='left', va='top')
 
         if r == 0:
             ax.set_title(f'{NPEAKS} = {_fmt(n_val)}')
@@ -348,7 +353,7 @@ fig.align_ylabels(axes[:, 0])
 #%% --- 8. SHARED X-LABEL + LEGEND + SAVE ---
 # Centre the x-label and legend on the panels (not on the full figure incl. margins)
 x_mid = (LEFT_MARGIN_IN + 0.5 * (fig_width_in - LEFT_MARGIN_IN - RIGHT_MARGIN_IN)) / fig_width_in
-fig.supxlabel('distance along estuary [km]', x=x_mid,
+fig.supxlabel('x [km]', x=x_mid,
               y=(BOTTOM_MARGIN_IN - XLABEL_GAP_IN) / fig_height_in, va='top')
 
 legend_handles = []

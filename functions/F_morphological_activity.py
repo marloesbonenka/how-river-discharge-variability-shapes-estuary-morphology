@@ -50,6 +50,19 @@ def relative_bed_change(profiles_time_space: np.ndarray) -> np.ndarray:
     zeros = np.zeros((1, z.shape[1]))
     return np.vstack([zeros, dz])
 
+def area_mean_bed_change(bed_time_face, area, mask):
+    """
+    Area-weighted mean bed-level change between consecutive outputs over the faces in
+    `mask` (Braat et al., 2017, Fig. 3e, j).
+
+    Returns (activity, net), one value per output interval [m per interval]:
+    activity = sum(|dz| * A) / sum(A), net = sum(dz * A) / sum(A) (+ = accretion).
+    """
+    dz = relative_bed_change(np.asarray(bed_time_face)[:, mask])[1:]
+    a = np.asarray(area)[mask]
+    return np.nansum(np.abs(dz) * a, axis=1) / a.sum(), np.nansum(dz * a, axis=1) / a.sum()
+
+
 def morph_years_from_datetimes(times: pd.DatetimeIndex, *, startdate=None, morfac=1.0) -> np.ndarray:
     """Convert datetime series to morphological years.
     

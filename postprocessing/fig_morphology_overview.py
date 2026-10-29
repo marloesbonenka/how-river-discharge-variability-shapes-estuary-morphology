@@ -1,23 +1,24 @@
-# %% Fig. 3: base run (constant discharge): morphological development, dynamic equilibrium
+# %% Fig. 3: morphology of the constant and the R_peak = 5 scenario
 #    AND the hydrodynamics of the final morphology
 """
-Opening figure of the results section. Base run = 01_Qr500_pm1_n0 (constant discharge).
+Opening figure of the results section. Constant run = 01_Qr500_pm1_n0, peak scenario
+= 05_Qr500_pm5_n1 (R_peak = 5, n_peaks = 1).
 
-Morphodynamic run (map output, date axis of the run, e.g. 2031 ... 2055):
-(a-c) detrended bed level at the start, end of spin-up and end of the run
-(d)   braiding index per 1-km segment (initial / end of spin-up / equilibrium mean +/- 2 sigma)
-(e)   braiding index vs model time for three reaches (one sample per year)
+Layout (AGU style, Calibri 8 pt for all text, 170 mm wide):
+(a)   discharge at km20 (downstream, sea) and km45 (upstream, river), last 24 h of the
+      detailed-hydro runs (positive = seaward, i.e. towards decreasing x)
+(b)   one-year hydrograph of the R_peak = 5 scenario at km45, with the mean and peak flow
+(c)   sediment budget of the constant run: net bed-load export per tidal cycle at
+      km20 divided by the river supply at km45 (his cross-sections), vs morphological
+      time
+(d)   initial bed level, with the positive flow direction
+(e-f) detrended bed level at the end of the constant and the R_peak = 5 run
+(g)   tidal range along the estuary (per-face max - min water level over the final 12 h,
+      width-averaged over the faces that stay wet) on the final beds, same scenarios as (a)
 
-Detailed-hydro run dhr_01 (2 days of hydrodynamics on the FINAL (t = 2055) bed; its own
-dates 2031-01-01 ... 01-03 are NOT on the morphodynamic time axis, so hours are shown):
-(f)   water-level anomaly at the thalweg, x vs time (tidal wave propagation)
-(g)   discharge at km20 (downstream, sea) and km45 (upstream, river)
-(h)   water-level envelope (min-max, final 12 h) along the thalweg + thalweg bed
-(i)   water depth at the thalweg (min-max band)
-
-Braiding index: number of separate wet channels per cross-section, on the RAW bed level
-at a FIXED reference stage (minimum water level of the detailed-hydro run), with a
-wet-depth threshold, so the time series reflects bed change only.
+Detailed-hydro runs: 2 days of hydrodynamics on the FINAL bed; their own dates
+2031-01-01 ... 01-03 are NOT on the morphodynamic time axis, so hours are shown.
+Colours as in fig_bedlevel_percentiles_pm_n.py: grey = constant, dark blue = R_peak = 5.
 """
 
 import sys
@@ -26,6 +27,8 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.lines import Line2D
+from matplotlib.ticker import FixedLocator, FuncFormatter, MultipleLocator
 import xarray as xr
 from scipy.spatial import cKDTree
 
@@ -36,6 +39,7 @@ from functions.F_general import (
     create_terrain_colormap,
     setup_variability_run_context,
 )
+from functions.F_dynamic_equilibrium import equilibrium_time, running_mean, tidal_cycle_budget
 from functions.F_loaddata import get_stitched_map_run_paths
 from functions.F_map_cache import cache_tag_from_bbox, load_or_update_map_cache_multi
 from functions.F_morphological_activity import build_centerline_reference
@@ -72,15 +76,24 @@ HYDRO_MORPH_RUN = BASE_DIRECTORY / "Model_Output" / "Q500" / "05_Qr500_pm5_n1.95
 HYDROGRAPH_KM = 45
 YEAR_DAYS_HYDROGRAPH = 365.25
 YEAR_DAYS = 365.25
-COLOR_PEAK = "#b2182b"
-COLOR_MEAN = "#2166ac"
-COLOR_CONST = "#4d4d4d"
+# same colours as fig_bedlevel_percentiles_pm_n.py: grey constant, Blues for R_peak (R_peak = 5 darkest)
+COLOR_CONST = "#7f7f7f"
+COLOR_PEAK = plt.cm.Blues(0.90)
+COLOR_MEAN = "#e08214"      # R_peak = 5 morphology at the constant-scenario flow (own hue, not an R_peak shade)
+RPEAK = r"$R_{\mathrm{peak}}$"
+NPEAKS = r"$n_{\mathrm{peaks}}$"
 LAST_HOURS = 24
 
 BED_VAR = "mesh2d_mor_bl"
 WL_VAR = "mesh2d_s1"
 HIS_FILENAME = "output/FlowFM_0000_his.nc"
 HIS_Q_VAR = "cross_section_discharge"
+# dynamic equilibrium from the his-file sediment budget (functions/F_dynamic_equilibrium.py;
+# full analysis incl. the R_peak = 5 run: plot_his_dynamic_equilibrium.py)
+CDRYB = 1600.0              # dry bed density [kg/m3] (.sed file): kg -> m3 of bed
+EQ_SEA_KM, EQ_RIVER_KM = 20, 45   # sediment budget of the estuary between these sections
+EQ_SMOOTH_YEARS = 10.0      # running mean of the per-tidal-cycle fluxes [morphological years]
+EQ_TOL = 0.10               # equilibrium: |net export - river supply| < EQ_TOL x river supply
 
 # The time axis of the morphodynamic map output is used exactly as it is (datetime64),
 # as in the map-plot script. One "year" = one year on that axis.
@@ -112,12 +125,33 @@ BED_LIM_INITIAL = 2         # colour limits of the actual initial bed: -2 ... 2 
 
 MAP_XLIM = (20_000, 45_000)
 MAP_YLIM = (5_000, 10_000)
+RANGE_BIN_KM = 0.5          # along-estuary bins of the width-averaged tidal range
 
-OUT_DIR = BASE_PATH / "output_plots" / "fig3_morphology_and_forcing"
-OUT_DIR.mkdir(parents=True, exist_ok=True)
+# --- AGU figure sizing (figures must be 50-170 mm wide) ---
+MM_TO_IN = 1 / 25.4
+FIGURE_WIDTH_MM = 170       # AGU full-page width
+FONT_SIZE = 8               # one size for all text: ticks, labels, titles, legend
+
+# Layout in inches, so the panels fill the full width at the final print size
+LEFT_MARGIN_IN = 0.45       # y tick labels + y-label
+RIGHT_MARGIN_IN = 0.08      # small buffer (line panels)
+CBAR_PAD_IN = 0.08          # map -> colorbar
+CBAR_W_IN = 0.10
+CBAR_LABEL_IN = 0.42        # colorbar tick labels + label
+LINE_WSPACE_IN = 0.55       # gap between line panels (each has its own y-label)
+LINE_PANEL_H_IN = 1.45
+LEGEND_H_IN = 0.40          # shared legend above the line panels
+LINE_XLABEL_IN = 0.45       # x tick labels + x-label below the line panels
+MAP_HSPACE_IN = 0.06        # gap between stacked maps
+MAP_XLABEL_IN = 0.36        # x tick labels + x-label below a map block
+RANGE_GAP_IN = 0.10         # last map -> tidal-range panel (shared x axis)
+RANGE_PANEL_H_IN = 1.10
+
+OUTPUT_DIR = BASE_DIRECTORY / "Model_Output" / "output_plots_combined" / "morphology_overview"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 DPI = 300
 
-apply_plot_style("AGU", font_size=10, title_delta=0, tick_delta=0, **{"grid.linewidth": 0.5})
+apply_plot_style("AGU", font_size=FONT_SIZE, title_delta=0)
 
 # %% --- FUNCTIONS -------------------------------------------------------------
 
@@ -137,6 +171,10 @@ def load_ds(run_dir, var_names, cache_dir, timed_out_dir=None):
     )
     if ds is None:
         raise FileNotFoundError(f"No cached map data for {name}")
+    # the cache appends time blocks out of order (e.g. 2031-01-01 at index 5): sort, drop duplicates
+    t = np.asarray(ds.time.values)
+    if np.any(np.diff(t) <= np.timedelta64(0)):
+        ds = ds.isel(time=np.unique(t, return_index=True)[1])
     return ds
 
 
@@ -179,19 +217,32 @@ def sample_indices(times):
 def detailed_profiles(run_dir):
     """
     Hydrodynamics of the detailed-hydro run on its (final) bed.
-    Returns per-section thalweg quantities from the final 12 h, the full-length thalweg
-    water-level series (for the x-t panel) and the fixed reference stage wl_min_full.
+    Returns per-section thalweg quantities from the final 12 h, the fixed reference stage
+    wl_min_full and the tidal range along the estuary (range_x_km, range_x): per-face
+    max - min water level over the final 12 h (one tidal cycle), averaged per RANGE_BIN_KM
+    bin over the faces that stay wet (falling-dry faces would clip the range at the bed).
     """
     ds = load_ds(run_dir, [WL_VAR, BED_VAR], cache_dir=run_dir.parent / "cached_data")
     try:
         fd_bed, fd_wl = face_dim(ds, BED_VAR), face_dim(ds, WL_VAR)
+        assert fd_bed == fd_wl, f"{BED_VAR} and {WL_VAR} on different faces"
         _, idx = build_section_index(ds)
         t = np.asarray(ds.time.values).astype("datetime64[ns]")
         sel = np.where(t >= t[-1] - np.timedelta64(12, "h"))[0]
         wl_fin = ds[WL_VAR].isel(time=sel).transpose("time", fd_wl).values
+        bed_faces = ds[BED_VAR].isel(time=-1).transpose(fd_bed).values
+        wl_hi, wl_lo = np.nanmax(wl_fin, axis=0), np.nanmin(wl_fin, axis=0)
+        fc = np.asarray(ds.grid.face_coordinates, dtype=float)
+        edges = np.arange(MAP_XLIM[0], MAP_XLIM[1] + 1, RANGE_BIN_KM * 1000)
+        keep = ((wl_lo - bed_faces) > WET_DEPTH_THRESHOLD_M) & (fc[:, 1] >= Y_RANGE_M[0]) & (fc[:, 1] <= Y_RANGE_M[1])
+        b = np.digitize(fc[keep, 0], edges) - 1
+        ok = (b >= 0) & (b < len(edges) - 1)
+        n = np.bincount(b[ok], minlength=len(edges) - 1)
+        s = np.bincount(b[ok], weights=(wl_hi - wl_lo)[keep][ok], minlength=len(edges) - 1)
+        range_x = np.where(n > 0, s / np.maximum(n, 1), np.nan)
         wl_max = np.nanmax(wl_fin, axis=0)[idx]
         wl_min = np.nanmin(wl_fin, axis=0)[idx]
-        bed = ds[BED_VAR].isel(time=-1).transpose(fd_bed).values[idx]
+        bed = bed_faces[idx]
         rows = np.arange(len(X_KM))
         ith = np.nanargmin(bed, axis=1)                    # thalweg sample per section
         faces = idx[rows, ith]
@@ -201,6 +252,7 @@ def detailed_profiles(run_dir):
             depth_max=np.clip(wmax - bed_t, 0, None),
             depth_min=np.clip(wmin - bed_t, 0, None),
             wl_min_full=wl_min, bed_full=bed,
+            range_x_km=0.5 * (edges[:-1] + edges[1:]) / 1000, range_x=range_x,
         )
     finally:
         ds.close()
@@ -242,15 +294,14 @@ def his_discharge(his_path, km):
         ds.close()
 
 
-def panel_letter(ax, letter):
-    ax.text(0.005, 0.97, letter, transform=ax.transAxes, va="top", ha="left",
-            fontweight="bold", bbox=dict(fc="white", ec="none", alpha=0.7, pad=1.5))
+def panel_letter(ax, letter, background=False):
+    """AGU panel label: lowercase letter in parentheses, top-left inside the axes."""
+    bbox = dict(fc="white", ec="none", alpha=0.8, pad=1.0) if background else None
+    ax.text(0.015, 0.95, f"({letter})", transform=ax.transAxes, ha="left", va="top", bbox=bbox)
 
 
 def clean(ax):
-    ax.grid(True, ls="--", alpha=0.5)
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
+    ax.grid(True, color="0.9", linewidth=0.5)
 
 
 # %% --- LOAD AND COMPUTE ------------------------------------------------------
@@ -261,9 +312,9 @@ prof_mean = detailed_profiles(MEAN_DETAILED_RUN)   # peaky scenario, flow = cons
 prof_peak = detailed_profiles(PEAK_DETAILED_RUN)   # peaky scenario, peak flow
 wl_ref = prof_const["wl_min_full"]                 # fixed reference stage for the wet mask
 
-SCEN = {"constant scenario": (DETAILED_RUN, prof_const, COLOR_CONST),
-        "peaky scenario, mean flow": (MEAN_DETAILED_RUN, prof_mean, COLOR_MEAN),
-        "peaky scenario, peak flow": (PEAK_DETAILED_RUN, prof_peak, COLOR_PEAK)}
+SCEN = {"constant": (DETAILED_RUN, prof_const, COLOR_CONST),
+        f"{RPEAK} = 5, mean flow": (MEAN_DETAILED_RUN, prof_mean, COLOR_MEAN),
+        f"{RPEAK} = 5, peak flow": (PEAK_DETAILED_RUN, prof_peak, COLOR_PEAK)}
 
 
 def last_window(t, q, hours=LAST_HOURS):
@@ -288,6 +339,22 @@ q_const = float(np.nanmean(q_c))
 i_mn = int(np.nanargmin(np.abs(q_h - q_const)))   # moment with the constant-scenario flow
 print(f"Hydrograph km{HYDROGRAPH_KM}: peak {q_h[i_pk]:.0f} m3/s on day {days_h[i_pk]:.0f}; "
       f"constant run mean {q_const:.0f} m3/s")
+
+# --- dynamic equilibrium of the constant scenario: net export (sea) = river supply per tidal cycle ---
+eq = tidal_cycle_budget(MORPH_RUN / HIS_FILENAME, EQ_SEA_KM, EQ_RIVER_KM, MORFAC_FACTOR, CDRYB)
+eq_yr, eq_supply, eq_export, eq_period = eq["morph_yr"], eq[EQ_RIVER_KM], eq[EQ_SEA_KM], eq["period_h"]
+n_win = max(1, int(round(EQ_SMOOTH_YEARS * YEAR_DAYS / MORFAC_FACTOR * 24 / eq_period.mean())))
+eq_supply_s, eq_export_s = running_mean(eq_supply, n_win), running_mean(eq_export, n_win)
+T_EQ = equilibrium_time(eq_yr, eq_export_s / eq_supply_s, EQ_TOL)   # None: not reached by the end
+late = eq_yr > eq_yr[-1] - 200
+print(f"\nSediment budget km{EQ_SEA_KM}-{EQ_RIVER_KM}, constant run ({len(eq_yr)} tidal cycles of "
+      f"{eq_period.mean():.2f} h, running mean {EQ_SMOOTH_YEARS:g} morph. yr = {n_win} cycles):")
+print(f"  river supply {np.mean(eq_supply):.0f} m3/cycle, net export {np.mean(eq_export):.0f} m3/cycle; "
+      f"export / supply: first 100 yr {np.mean(eq_export[eq_yr < 100]) / np.mean(eq_supply[eq_yr < 100]):.2f}, "
+      f"last 200 yr {np.mean(eq_export[late]) / np.mean(eq_supply[late]):.2f}")
+print(f"  net storage over the run: {np.sum(eq_supply - eq_export) * MORFAC_FACTOR:.3e} m3 of bed")
+print(f"  dynamic equilibrium (|export - supply| < {EQ_TOL:.0%} of supply from then on): "
+      + (f"reached after {T_EQ:.0f} morphological years" if T_EQ is not None else "NOT reached"))
 
 # --- morphodynamic run ---
 ds = load_ds(MORPH_RUN, [BED_VAR], cache_dir=CACHE_DIR, timed_out_dir=TIMED_OUT_DIR)
@@ -346,107 +413,161 @@ for sname, (_, pr, _) in SCEN.items():
               f"+/-{(q.max() - q.min()) / 2:.0f} m3/s, tidal range "
               f"{pr['wl_max'][i] - pr['wl_min'][i]:.2f} m, thalweg depth "
               f"{pr['depth_min'][i]:.1f}-{pr['depth_max'][i]:.1f} m")
+    rx, r = pr["range_x_km"], pr["range_x"]
+    print(f"  [{sname}] width-averaged tidal range: km 20-21 {np.nanmean(r[rx < 21]):.2f} m, "
+          f"max {np.nanmax(r):.2f} m at km {rx[np.nanargmax(r)]:.1f}, km 44-45 {np.nanmean(r[rx > 44]):.2f} m")
 
-# %% --- FIGURE ----------------------------------------------------------------
+# %% --- FIGURE LAYOUT (inches) -----------------------------------------------
 
-fig = plt.figure(figsize=(7.5, 10.5), constrained_layout=True)
-sf_top, sf_maps, sf_bot = fig.subfigures(3, 1, height_ratios=[2.3, 3.4, 2.3])
+fig_width_in = FIGURE_WIDTH_MM * MM_TO_IN
+map_w = fig_width_in - LEFT_MARGIN_IN - CBAR_PAD_IN - CBAR_W_IN - CBAR_LABEL_IN
+map_h = map_w * (MAP_YLIM[1] - MAP_YLIM[0]) / (MAP_XLIM[1] - MAP_XLIM[0])   # equal-aspect maps
+line_w = (fig_width_in - LEFT_MARGIN_IN - RIGHT_MARGIN_IN - 2 * LINE_WSPACE_IN) / 3
 
-# (c-e) maps: initial bed, then constant and peaky scenario at the end of the run
-axm = sf_maps.subplots(3, 1)
-tick_x = np.arange(20_000, 45_001, 5_000)
-layout = [("c", "constant", 0), ("d", "constant", "k_end"), ("e", "peaky", "k_end")]
-for ax, (letter, scen, kk) in zip(axm, layout):
-    run = RUNS[scen]
-    k = kk if isinstance(kk, int) else run[kk]
-    if letter == "c":          # initial bed: actual bed level, not detrended (identical for both runs)
-        pc_a = raw_bed(run, 0).ugrid.plot(ax=ax, cmap=BED_CMAP, vmin=-BED_LIM_INITIAL,
-                                          vmax=BED_LIM_INITIAL, add_colorbar=False, edgecolors="none")
-        pc_a.set_clim(-BED_LIM_INITIAL, BED_LIM_INITIAL)
-        label = "initial"
-    else:                      # end beds: detrended w.r.t. the t=0 centreline profile
-        pc = detrended_bed(run, k).ugrid.plot(ax=ax, cmap=BED_CMAP, vmin=-BED_LIM, vmax=BED_LIM,
-                                              add_colorbar=False, edgecolors="none")
-        label = f"{scen} scenario \u2013 end ({run['t'][k]:.0f} yr)"
+y_line = LEGEND_H_IN                                        # top of each block, from the figure top
+y_maps = y_line + LINE_PANEL_H_IN + LINE_XLABEL_IN
+y_range = y_maps + 3 * map_h + 2 * MAP_HSPACE_IN + RANGE_GAP_IN
+fig_height_in = y_range + RANGE_PANEL_H_IN + MAP_XLABEL_IN
+
+fig = plt.figure(figsize=(fig_width_in, fig_height_in))
+
+
+def add_axes_in(x, y_top, w, h):
+    """Axes at x [in] from the left edge and y_top [in] below the top edge of the figure."""
+    return fig.add_axes([x / fig_width_in, 1 - (y_top + h) / fig_height_in,
+                         w / fig_width_in, h / fig_height_in])
+
+
+def cbar_axes_in(y_top, h):
+    return add_axes_in(LEFT_MARGIN_IN + map_w + CBAR_PAD_IN, y_top, CBAR_W_IN, h)
+
+
+km_formatter = FuncFormatter(lambda v, pos: f"{v / 1000:g}")
+
+
+def format_map(ax, show_x, show_y=True):
     ax.set_xlim(MAP_XLIM)
     ax.set_ylim(MAP_YLIM)
     ax.set_title("")
-    ax.set_xlabel("")
-    ax.set_ylabel("y [km]")
-    ax.set_xticks(tick_x)
-    ax.set_xticklabels([f"{v / 1000:.0f}" for v in tick_x] if letter == "e" else [])
-    ax.set_yticks([5_000, 7_500, 10_000])
-    ax.set_yticklabels(["5", "7.5", "10"])
-    ax.text(0.99, 0.95, label, transform=ax.transAxes, va="top", ha="right",
-            bbox=dict(fc="white", ec="none", alpha=0.7, pad=1.5))
-    panel_letter(ax, letter)
-axm[-1].set_xlabel("x [km]")
-cb_a = sf_maps.colorbar(pc_a, ax=axm[0], pad=0.01, aspect=12)
-cb_a.set_label("bed level [m]")
-cb = sf_maps.colorbar(pc, ax=axm[1:], pad=0.01, aspect=22)
-cb.set_label("detrended bed level [m]")
+    ax.set_xlabel("x [km]" if show_x else "")
+    ax.set_ylabel("y [km]" if show_y else "")
+    ax.xaxis.set_major_locator(MultipleLocator(5_000))
+    ax.yaxis.set_major_locator(FixedLocator([6_000, 7_500, 9_000]))   # no clash between stacked maps
+    ax.xaxis.set_major_formatter(km_formatter)
+    ax.yaxis.set_major_formatter(km_formatter)
+    ax.tick_params(labelbottom=show_x, labelleft=show_y)
 
-# (a, b, f, g) forcing and hydrodynamics of the final morphologies: constant vs peaky (mean and peak flow)
-axg, axf = sf_top.subplots(1, 2)   # left: tide (discharge), right: hydrograph
-axh, axi = sf_bot.subplots(1, 2)   # water-level envelope, thalweg depth
 
-# (b, right) one-year hydrograph of the variable scenario, constant level, dots at mean and peak
-axf.plot(yr_h, q_h, color="0.6", lw=1.1, label="peaky scenario")
-axf.axhline(q_const, color=COLOR_CONST, ls="--", lw=1.1, label="constant scenario")
-axf.plot(yr_h[i_mn], q_h[i_mn], "o", color=COLOR_MEAN, ms=6, zorder=5, label="mean flow")
-axf.plot(yr_h[i_pk], q_h[i_pk], "o", color=COLOR_PEAK, ms=6, zorder=5, label="peak flow")
-axf.set_xlabel("normalised time [t / year]")
-axf.set_ylabel("upstream (river) discharge [m$^3$/s]")
-axf.set_xlim(0, 1)
-axf.legend(frameon=False, fontsize=7, loc="upper right")
-panel_letter(axf, "b")
+def map_label(ax, text):
+    ax.text(0.99, 0.95, text, transform=ax.transAxes, ha="right", va="top")
 
-# (a, left) discharge at km20 (solid) and km45 (dashed), last 24 h of each detailed run
+
+# %% --- (a-c) FORCING AND HYDRODYNAMICS OF THE FINAL MORPHOLOGY ---------------
+
+axg, axf, axh = (add_axes_in(LEFT_MARGIN_IN + i * (line_w + LINE_WSPACE_IN), y_line, line_w, LINE_PANEL_H_IN)
+                 for i in range(3))
+
+# (a) discharge at km20 (solid) and km45 (dashed), last 24 h of each detailed run
 for sname, (_, _, c) in SCEN.items():
     for km, ls in ((20, "-"), (45, "--")):
         h, q = q_series[(sname, km)]
-        axg.plot(h, q, color=c, ls=ls, lw=1.1)
-axg.axhline(0, color="k", lw=0.5, alpha=0.5)
+        axg.plot(h, q, color=c, ls=ls, lw=1.0)
+axg.axhline(0, color="k", lw=0.5)
 axg.set_xlabel("time [h]")
 axg.set_ylabel("discharge [m$^3$/s]")
-from matplotlib.lines import Line2D
-axg.legend(handles=[Line2D([], [], color=COLOR_CONST, lw=1.1, label="constant"),
-                    Line2D([], [], color=COLOR_MEAN, lw=1.1, label="peaky, mean flow"),
-                    Line2D([], [], color=COLOR_PEAK, lw=1.1, label="peaky, peak flow"),
-                    Line2D([], [], color="k", ls="-", lw=1.1, label="downstream (sea, km 20)"),
-                    Line2D([], [], color="k", ls="--", lw=1.1, label="upstream (river, km 45)")],
-           frameon=False, fontsize=7, loc="lower left", bbox_to_anchor=(0.0, 1.02),
-           ncol=2, borderaxespad=0.0, columnspacing=1.2, handlelength=1.8)
+axg.set_xlim(0, LAST_HOURS)
+axg.set_ylim(top=1.4 * axg.get_ylim()[1])   # room for the panel label above the flood peak
+axg.xaxis.set_major_locator(MultipleLocator(6))
 panel_letter(axg, "a")
 
-# (f) water-level envelope (final 12 h) along the thalweg
-axh.plot(X_KM, prof_const["bed"], color="0.5", lw=1.0, label="thalweg bed (constant)")
-for sname, (_, pr, c) in SCEN.items():
-    axh.fill_between(X_KM, pr["wl_min"], pr["wl_max"], color=c, alpha=0.3, lw=0)
-    axh.plot(X_KM, 0.5 * (pr["wl_min"] + pr["wl_max"]), color=c, lw=1.2, label=sname)
-axh.set_xlabel("x [km]")
-axh.set_ylabel("elevation [m]")
-axh.set_xlim(20, 45)
-axh.legend(frameon=False, fontsize=7, loc="lower left", bbox_to_anchor=(0.0, 1.02),
-           ncol=2, borderaxespad=0.0, columnspacing=1.2, handlelength=1.8)
-panel_letter(axh, "f")
+# (b) one-year hydrograph of the R_peak = 5 scenario, constant level, dots at mean and peak
+#     (colours explained by the shared legend above the row)
+axf.plot(yr_h, q_h, color=COLOR_PEAK, lw=1.0)
+axf.axhline(q_const, color=COLOR_CONST, ls="--", lw=0.9)
+axf.plot(yr_h[i_mn], q_h[i_mn], "o", color=COLOR_MEAN, mec="white", mew=0.5, ms=5, zorder=5)
+axf.plot(yr_h[i_pk], q_h[i_pk], "o", color=COLOR_PEAK, mec="white", mew=0.5, ms=5, zorder=5)
+axf.set_xlabel("normalised time [t / year]")
+axf.set_ylabel("river discharge (km 45) [m$^3$/s]")
+axf.set_xlim(0, 1)
+panel_letter(axf, "b")
 
-# (g) thalweg water depth band
-for sname, (_, pr, c) in SCEN.items():
-    axi.fill_between(X_KM, pr["depth_min"], pr["depth_max"], color=c, alpha=0.3, lw=0)
-    axi.plot(X_KM, 0.5 * (pr["depth_min"] + pr["depth_max"]), color=c, lw=1.2)
-axi.set_xlabel("x [km]")
-axi.set_ylabel("thalweg water depth [m]")
-axi.set_xlim(20, 45)
-axi.set_ylim(bottom=0)
-panel_letter(axi, "g")
+# (c) sediment budget of the constant run: net export at km20 / river supply at km45 per
+#     tidal cycle (running mean); the equilibrium itself is discussed in the text
+axh.plot(eq_yr, eq_export_s / eq_supply_s, color=COLOR_CONST, lw=1.0)
+axh.set_xlabel("morphological time [yr]")
+axh.set_ylabel("net export / river supply [–]")
+axh.set_xlim(0, round(eq_yr[-1], -2))
+axh.set_ylim(0, None)
+axh.xaxis.set_major_locator(MultipleLocator(200))
+panel_letter(axh, "c")
 
-for ax in (axf, axg, axh, axi):
+for ax in (axg, axf, axh):
     clean(ax)
 
-out = OUT_DIR / "fig3_morphology_and_forcing"
-fig.savefig(out.with_suffix(".png"), dpi=DPI, bbox_inches="tight")
-fig.savefig(out.with_suffix(".pdf"), bbox_inches="tight")
-print(f"\nSaved: {out}.png / .pdf")
+x_mid = (LEFT_MARGIN_IN + 0.5 * (fig_width_in - LEFT_MARGIN_IN - RIGHT_MARGIN_IN)) / fig_width_in
+fig.legend(handles=[Line2D([], [], color=c, lw=1.0, label=s) for s, (_, _, c) in SCEN.items()]
+           + [Line2D([], [], color="k", ls="-", lw=1.0, label="sea (km 20)"),
+              Line2D([], [], color="k", ls="--", lw=1.0, label="river (km 45)")],
+           loc="upper center", bbox_to_anchor=(x_mid, 1 - 0.02 / fig_height_in), ncol=5,
+           frameon=True, handlelength=1.8, handletextpad=0.5, columnspacing=1.2, borderaxespad=0)
+
+# %% --- (d-f) BED LEVEL: initial, constant and R_peak = 5 scenario at the end of the run ---
+
+layout = [("d", "constant", 0, "initial"),
+          ("e", "constant", "k_end", "constant"),
+          ("f", "peaky", "k_end", f"{RPEAK} = 5, {NPEAKS} = 1")]
+axm = []
+for j, (letter, scen, kk, name) in enumerate(layout):
+    ax = add_axes_in(LEFT_MARGIN_IN, y_maps + j * (map_h + MAP_HSPACE_IN), map_w, map_h)
+    run = RUNS[scen]
+    k = kk if isinstance(kk, int) else run[kk]
+    if letter == "d":          # initial bed: actual bed level, not detrended (identical for both runs)
+        pc_a = raw_bed(run, 0).ugrid.plot(ax=ax, cmap=BED_CMAP, vmin=-BED_LIM_INITIAL,
+                                          vmax=BED_LIM_INITIAL, add_colorbar=False, edgecolors="none")
+        map_label(ax, name)
+        # positive (seaward) flow direction: right to left
+        ax.annotate("", xy=(0.88, 0.72), xytext=(0.99, 0.72), xycoords="axes fraction",
+                    arrowprops=dict(arrowstyle="-|>", color="k", lw=0.75, mutation_scale=7))
+        ax.text(0.87, 0.72, "positive flow", transform=ax.transAxes, ha="right", va="center")
+    else:                      # end beds: detrended w.r.t. the t=0 centreline profile
+        pc = detrended_bed(run, k).ugrid.plot(ax=ax, cmap=BED_CMAP, vmin=-BED_LIM, vmax=BED_LIM,
+                                              add_colorbar=False, edgecolors="none")
+        map_label(ax, f"{name} – end ({run['t'][k]:.0f} yr)")
+    format_map(ax, show_x=False)    # x axis labelled once, below the tidal-range panel (g)
+    panel_letter(ax, letter)
+    axm.append(ax)
+
+cb_a = fig.colorbar(pc_a, cax=cbar_axes_in(y_maps, map_h))
+cb_a.set_label("bed level [m]")
+cb = fig.colorbar(pc, cax=cbar_axes_in(y_maps + map_h + MAP_HSPACE_IN, 2 * map_h + MAP_HSPACE_IN))
+cb.set_label("detrended bed level [m]")
+
+# %% --- (g) TIDAL RANGE along the estuary, final beds (same width / x axis as the maps) ---
+
+axr = add_axes_in(LEFT_MARGIN_IN, y_range, map_w, RANGE_PANEL_H_IN)
+for sname, (_, pr, c) in SCEN.items():
+    axr.plot(pr["range_x_km"], pr["range_x"], color=c, lw=1.0)
+axr.set_xlim(MAP_XLIM[0] / 1000, MAP_XLIM[1] / 1000)
+axr.set_ylim(0, 1.25 * max(np.nanmax(pr["range_x"]) for _, pr, _ in SCEN.values()))   # room for the label
+axr.xaxis.set_major_locator(MultipleLocator(5))
+axr.yaxis.set_major_locator(MultipleLocator(1))
+axr.set_xlabel("x [km]")
+axr.set_ylabel("tidal range [m]")
+clean(axr)
+panel_letter(axr, "g")
+fig.align_ylabels([axg] + axm + [axr])
+
+# %% --- SAVE -------------------------------------------------------------------
+
+print(f"\nFigure size: {fig_width_in / MM_TO_IN:.0f} x {fig_height_in / MM_TO_IN:.0f} mm")
+save_name = f"AGU_morphology_overview_Q{DISCHARGE}"
+save_path = OUTPUT_DIR / f"{save_name}.png"
+fig.savefig(save_path, dpi=DPI, bbox_inches="tight", transparent=True)
+fig.savefig(OUTPUT_DIR / f"{save_name}.pdf", bbox_inches="tight", transparent=True)
+plt.show()
+print(f"Saved: {save_path}")
 ds.close()
 ds_p.close()
+
+# %%
+
