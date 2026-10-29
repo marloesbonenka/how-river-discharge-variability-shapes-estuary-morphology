@@ -14,10 +14,12 @@ def tidal_avg(arr, window):
     return np.convolve(arr, np.ones(window) / window, mode="same")
 
 
-def compute_net_along_flow_transport(ds, window_hours, min_velocity):
+def compute_net_along_flow_transport(ds, window_hours, min_velocity, return_gross=False):
     """Compute the time-averaged, flood/ebb-signed, along-flow sediment
     transport over the last `window_hours` of the dataset. Returns a
-    (net_da, actual_window_hours) tuple.
+    (net_da, actual_window_hours) tuple, or (net_da, gross_da,
+    actual_window_hours) if return_gross, with gross_da the time-averaged
+    unsigned along-flow transport magnitude (flood + ebb, no cancellation).
 
     At each cell and timestep:
       1. transport_mag_along_flow = (sx*ucx + sy*ucy) / |u|, clipped to >= 0.
@@ -94,6 +96,10 @@ def compute_net_along_flow_transport(ds, window_hours, min_velocity):
     net_transport_per_cycle = net_transport_integrated / elapsed_seconds
 
     net_da = ds_window['mesh2d_sxtot'].isel(time=0, nSedTot=0).copy(data=net_transport_per_cycle)
+    if return_gross:
+        gross_per_cycle = np.trapezoid(transport_mag_along_flow, x=t_seconds, axis=0) / elapsed_seconds
+        gross_da = ds_window['mesh2d_sxtot'].isel(time=0, nSedTot=0).copy(data=gross_per_cycle)
+        return net_da, gross_da, actual_window_hours
     return net_da, actual_window_hours
 
 

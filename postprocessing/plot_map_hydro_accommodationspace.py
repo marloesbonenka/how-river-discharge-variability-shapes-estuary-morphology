@@ -5,6 +5,7 @@ level on the same axes to visualise the vertical gap available for bar aggradati
 
 For each scenario, the script:
   1. Loads the cached water level (mesh2d_s1) and bed level (mesh2d_mor_bl).
+     Scenarios: constant, and R_peak = 5 (pm5_n4) at its mean and peak flow.
   2. Bins face cells by x-coordinate into equal-width intervals.
   3. Computes p5 / p95 across (time × faces) within each bin.
   4. Produces two figures:
@@ -44,7 +45,6 @@ from functions.F_general import apply_plot_style, add_direct_labels, add_fill_la
 
 SCENARIOS = {
     'constant':  Path(r"U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\detailed-hydro-run\dhr_01_Qr500_pm1_n0.9724783"),
-    'low flow':  Path(r"U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\detailed-hydro-run\dhr_12_Qr500_pm5_n4_lowflow.9728497"),
     'mean flow': Path(r"U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\detailed-hydro-run\dhr_12_Qr500_pm5_n4_meanflow.9728503"),
     'peak flow': Path(r"U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\detailed-hydro-run\dhr_12_Qr500_pm5_n4_peakflow"),
 }
@@ -68,25 +68,16 @@ X_MAX       = 45000        # upstream limit
 # (water level == fill value or NaN).  Set to None to skip.
 WET_FRACTION_THRESHOLD = 0.1   # cell must be wet in ≥10 % of timesteps
 
-# Colours for the four scenarios — order matches SCENARIOS dict
-cmap = cmocean.cm.amp
-
-# Flow categories ordered from low (light) to peak (dark)
-flow_scenarios = ['low flow', 'mean flow', 'peak flow']
-
-# Sample 3 evenly spaced points along the colormap
-# Tip: Using range 0.2 to 0.9 stops 'low flow' from being completely white/invisible on white backgrounds
-samples = np.linspace(0.15, 1, len(flow_scenarios))
-
-# Map to hex colors
+# same colours as fig_morphology_overview.py: grey constant, orange R_peak = 5 at mean flow,
+# dark blue R_peak = 5 at peak flow
 SCENARIO_COLORS = {
-    'constant': '#888888',
-    **{name: mcolors.to_hex(cmap(val)) for name, val in zip(flow_scenarios, samples)}
+    'constant':  '#7f7f7f',
+    'mean flow': '#e08214',
+    'peak flow': mcolors.to_hex(plt.cm.Blues(0.90)),
 }
 
 SCENARIO_LINESTYLE = {
     'constant':  '--',
-    'low flow':  '-',
     'mean flow': '-',
     'peak flow': '-',
 }
@@ -327,21 +318,16 @@ if 'peak flow' in results:
     ax_bot.plot(bin_centres, prof_p['p95_bl'], color='saddlebrown', lw=2.0)
     bot_curves.append((bin_centres, prof_p['p95_bl'], 'p95 bed level (bar top)', 'saddlebrown'))
  
-    # 2. Plot Low Flow Water Level
-    if 'low flow' in results:
-        ax_bot.plot(bin_centres, results['low flow']['p95'], color=SCENARIO_COLORS['low flow'], lw=1.5)
-        bot_curves.append((bin_centres, results['low flow']['p95'], 'p95 water level (low flow)', SCENARIO_COLORS['low flow']))
- 
-    # 3. Plot Mean Flow Water Level
+    # 2. Plot Mean Flow Water Level
     if 'mean flow' in results:
         ax_bot.plot(bin_centres, results['mean flow']['p95'], color=SCENARIO_COLORS['mean flow'], lw=1.5)
         bot_curves.append((bin_centres, results['mean flow']['p95'], 'p95 water level (mean flow)', SCENARIO_COLORS['mean flow']))
  
-    # 4. Plot Peak Flow Water Level
+    # 3. Plot Peak Flow Water Level
     ax_bot.plot(bin_centres, prof_p['p95'], color=SCENARIO_COLORS['peak flow'], lw=2.0)
     bot_curves.append((bin_centres, prof_p['p95'], 'p95 water level (peak flow)', SCENARIO_COLORS['peak flow']))
  
-    # 5. Shade total maximum accommodation space (bounded by the Peak Flow high water mark)
+    # 4. Shade total maximum accommodation space (bounded by the Peak Flow high water mark)
     ax_bot.fill_between(bin_centres, prof_p['p95_bl'], prof_p['p95'], color=SCENARIO_COLORS['peak flow'], alpha=0.15)
  
     # Formatting
