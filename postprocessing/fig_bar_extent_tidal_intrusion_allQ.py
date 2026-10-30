@@ -11,7 +11,7 @@ Layout (AGU style, Calibri 8 pt for all text, 170 mm wide), one panel per discha
                bed level drops back to that of the constant run (within the constant run's
                autogenic variability: K_SIGMA x its temporal std over the last EVAL_YEARS).
   marker       tidal intrusion limit (landward limit of flood flow, mean-flow detailed-hydro
-               run on the final morphology), as in the tidal-metrics figure.
+               run on the final morphology), as in the tidal-metrics figure; grey = constant run.
   dashed line  tidal intrusion limit of the constant run.
 
 Data: map caches of the morphodynamic runs (bars); LTI_summary.csv of
@@ -27,11 +27,12 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
+from matplotlib.legend_handler import HandlerTuple
 from matplotlib.ticker import MultipleLocator
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root, one level up from postprocessing/
 
-from functions.F_general import apply_plot_style, find_variability_model_folders, get_variability_map
+from functions.F_general import apply_plot_style, find_variability_model_folders, get_variability_map, save_agu_figure
 from functions.F_map_cache import cache_tag_from_bbox, load_or_update_map_cache_multi, _get_face_coords
 from functions.F_loaddata import get_stitched_map_run_paths
 from functions.F_bedlevel_percentiles import bedlevel_profiles
@@ -54,17 +55,18 @@ RIVER_END_KM = 45.0
 EVAL_YEARS = 3                 # window of the constant run for its autogenic variability
 K_SIGMA = 2.0                  # raised = p95 above constant by more than K_SIGMA x std ...
 MIN_RISE_M = 0.05              # ... and by at least this much
-MAX_GAP_BINS = 1               # bins below the threshold tolerated inside the raised reach
+MAX_GAP_BINS = 2               # bins below the threshold tolerated inside the raised reach
+                               # (2: Q500 R_peak 2 dips into the envelope at km 36-37 only)
 
 CACHE_BBOX = [1, 1, 45000, 15000]
 CACHE_TAG = None
 
 RPEAK = r'$R_{\mathrm{peak}}$'
 GREY_CONST = "#7f7f7f"
-DISCHARGE_COLORS = {250: '#3B6064', 500: '#87BBA2', 1000: '#C9E4CA'}
 DISCHARGE_MARKERS = {250: '^', 500: 'o', 1000: 's'}
+LINE_WIDTH_CONST = 0.9
 BAR_LINE_WIDTH = 6
-MARKER_SIZE = 6
+MARKER_SIZE = 5
 XTICK_STEP_KM = 5
 
 # --- AGU figure sizing ---
@@ -170,16 +172,16 @@ fig, axes = plt.subplots(1, len(q_list), sharex=True, sharey=True, squeeze=False
 axes = axes[0]
 for c, (q, ax) in enumerate(zip(q_list, axes)):
     s = summary[summary.discharge == q]
-    col, mk = DISCHARGE_COLORS[q], DISCHARGE_MARKERS[q]
     const_lim = s.loc[s.n == 0, 'tidal_intrusion_limit_km']
     if len(const_lim):
-        ax.axvline(const_lim.iloc[0], color=col, linewidth=1.2, linestyle='--', zorder=1)
+        ax.axvline(const_lim.iloc[0], color=GREY_CONST, linewidth=LINE_WIDTH_CONST, linestyle='--', zorder=1)
     for _, r in s.iterrows():
         if np.isfinite(r.raised_bars_from_km):
             ax.plot([r.raised_bars_from_km, RIVER_END_KM], [r.pm, r.pm], color=PM_COLOR[r.pm],
                     linewidth=BAR_LINE_WIDTH, solid_capstyle='butt', zorder=2)
-        ax.plot(r.tidal_intrusion_limit_km, r.pm, marker=mk, color=col, markersize=MARKER_SIZE,
-                markeredgecolor='k', markeredgewidth=0.5, linestyle='', zorder=4)
+        ax.plot(r.tidal_intrusion_limit_km, r.pm, marker=DISCHARGE_MARKERS[q],
+                color=GREY_CONST if r.n == 0 else 'white',
+                markersize=MARKER_SIZE, markeredgecolor='k', markeredgewidth=0.6, linestyle='', zorder=4)
     ax.set_title(f'$Q$ = {q} m\u00b3/s')
     ax.set_xlabel('Along-estuary distance [km]')
     ax.grid(True, color='0.9', linewidth=0.5)
@@ -193,17 +195,16 @@ axes[0].set_ylim(0.5, all_pm[-1] + 0.5)
 
 legend_handles = [mlines.Line2D([], [], color=PM_COLOR[all_pm[-1]], linewidth=BAR_LINE_WIDTH,
                                 solid_capstyle='butt', label='reach with raised bars')]
-legend_handles += [mlines.Line2D([], [], color=DISCHARGE_COLORS[q], marker=DISCHARGE_MARKERS[q], linestyle='',
-                                 markersize=MARKER_SIZE, markeredgecolor='k', markeredgewidth=0.5,
-                                 label=f'tidal intrusion limit, $Q$ = {q}') for q in q_list]
-legend_handles.append(mlines.Line2D([], [], color='0.4', linewidth=1.2, linestyle='--',
+legend_handles.append(tuple(mlines.Line2D([], [], color='white', marker=DISCHARGE_MARKERS[q], linestyle='',
+                                          markersize=MARKER_SIZE, markeredgecolor='k', markeredgewidth=0.6)
+                            for q in q_list))
+legend_handles.append(mlines.Line2D([], [], color=GREY_CONST, linewidth=LINE_WIDTH_CONST, linestyle='--',
                                     label='tidal intrusion limit, constant'))
-fig.legend(handles=legend_handles, loc='outside lower center', ncol=3, frameon=True)
+legend_labels = ['reach with raised bars', 'tidal intrusion limit', 'tidal intrusion limit, constant']
+fig.legend(legend_handles, legend_labels, handler_map={tuple: HandlerTuple(ndivide=None, pad=0.6)},
+           loc='outside lower center', ncol=len(legend_handles), frameon=True)
 
-save_name = f"AGU_bar_extent_tidal_intrusion_allQ_n{PROFILE_N}"
-fig.savefig(OUTPUT_DIR / f"{save_name}.png", dpi=300, bbox_inches='tight', transparent=True)
-fig.savefig(OUTPUT_DIR / f"{save_name}.pdf", bbox_inches='tight', transparent=True)
+save_agu_figure(fig, OUTPUT_DIR / f"AGU_bar_extent_tidal_intrusion_allQ_n{PROFILE_N}")
 plt.show()
-print(f"Saved: {OUTPUT_DIR / save_name}.png")
 
 # %%
