@@ -19,7 +19,6 @@ population, see functions/F_bedlevel_percentiles.py).
 from pathlib import Path
 import re
 import sys
-
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -35,6 +34,7 @@ from functions.F_general import (
     find_variability_model_folders,
     get_snapshot_matches_by_target_dates,
     get_variability_map,
+    save_agu_figure,
 )
 from functions.F_map_cache import cache_tag_from_bbox, load_or_update_map_cache_multi, _get_face_coords
 from functions.F_loaddata import get_stitched_map_run_paths
@@ -213,9 +213,7 @@ legend_handles += [mlines.Line2D([], [], color=PM_COLOR[pm], linewidth=LINE_WIDT
 fig.legend(handles=legend_handles, loc='outside lower center', ncol=len(legend_handles), frameon=True)
 
 save_name = "AGU_equal_supply_bars_channels_Q500_" + "_".join(f"pm{pm}n{n}" for pm, n in EQUAL_SUPPLY_RUNS)
-fig.savefig(OUTPUT_DIR / f"{save_name}.png", dpi=300, bbox_inches='tight', transparent=True)
-fig.savefig(OUTPUT_DIR / f"{save_name}.pdf", bbox_inches='tight', transparent=True)
+save_agu_figure(fig, OUTPUT_DIR / save_name)
 plt.show()
-print(f"Saved: {OUTPUT_DIR / save_name}.png")
 
 # %%

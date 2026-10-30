@@ -10,8 +10,8 @@ For each scenario, the script:
   3. Computes p5 / p95 across (time × faces) within each bin.
   4. Produces two figures:
        Fig 1 — p95 (high water) and p5 (low water) water level, all scenarios.
-       Fig 2 — p95 water level vs p95 bed level on the same axes; one panel per
-               scenario pair (constant vs. peak flow) to make the accommodation
+       Fig 2 — p95 water level vs p95 bed level on the same axes; two side-by-side
+               panels (constant vs. peak flow) to make the accommodation
                space argument explicit.
 
 Styling notes:
@@ -20,7 +20,8 @@ Styling notes:
     are set manually anywhere below.
   - Top and right axes spines are removed on every panel.
   - Curves are labelled directly at their right-hand endpoint instead of using a
-    separate legend; shaded accommodation-space regions get an in-place label.
+    separate legend (wrapped onto two lines in Fig 2 to save panel width); the
+    shaded accommodation-space region is labelled with an arrow callout.
 """
 
 # %% Imports
@@ -37,7 +38,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root, one l
 
 from functions.F_map_cache import cache_tag_from_bbox, load_or_update_map_cache_multi
 from functions.F_loaddata import get_stitched_map_run_paths
-from functions.F_general import apply_plot_style, add_direct_labels, add_fill_label, strip_top_right_spines
+from functions.F_general import (apply_plot_style, add_direct_labels, add_fill_label,
+                                 save_agu_figure, strip_top_right_spines)
 
 # ---------------------------------------------------------------------------
 # CONFIGURATION
@@ -86,20 +88,15 @@ SCENARIO_LINESTYLE = {
 OUTPUT_DIR = Path(r"U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output\Q500\detailed-hydro-run\output_plots\water level")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_FILENAME_WL    = "waterlevel_p5_p95_along_estuary.png"
-OUTPUT_FILENAME_ACCOM = "accommodation_space_along_estuary.png"
+OUTPUT_STEM_ACCOM     = "AGU_accommodation_space_along_estuary"   # saved as .png and .pdf
 
-# --- AGU figure sizing (figures must be 50-170 mm wide) ---
+# --- AGU figure sizing: same as the other full-page paper figures ---
 MM_TO_IN = 1 / 25.4
-FIGURE_WIDTH_MM = 170/2          # AGU full-page width, since we need 2 columns + colorbar
-CBAR_WIDTH_FRACTION = 0.03     # fraction of total width reserved for the shared colorbar
+FIGURE_WIDTH_MM  = 170   # AGU full-page width
+FIGURE_HEIGHT_MM = 62
+FONT_SIZE = 8            # one size for all text: ticks, labels, titles
 
-# Fraction of the x-range added as blank space on the right of each panel so
-# the direct end-of-line labels have room to sit without being clipped.
-LABEL_MARGIN_FRAC = 0.16
-
-FONTSIZE = 11
-
-apply_plot_style('AGU', font_size=FONTSIZE, tick_delta=-1)
+apply_plot_style('AGU', font_size=FONT_SIZE, title_delta=0)
 
 #%% ---------------------------------------------------------------------------
 # BIN EDGES
@@ -242,7 +239,7 @@ for ax, title in zip([ax_p95, ax_p5], ['p95 water level (high water)', 'p5 water
  
 strip_top_right_spines(ax_p95, ax_p5)
  
-ax_p5.set_xlabel('distance along estuary [km]')
+ax_p5.set_xlabel('Along-estuary distance [km]')
 ax_p5.set_xlim(X_MIN / 1000, X_MAX / 1000)
  
 # --- Direct labels instead of a shared legend ---
@@ -271,94 +268,102 @@ print(f"\nSaved Figure 1: {out_path_wl}")
 # ---------------------------------------------------------------------------
  
 fig2, axes2 = plt.subplots(
-    2, 1,
-    figsize=(8, 6),
+    1, 2,
+    figsize=(FIGURE_WIDTH_MM * MM_TO_IN, FIGURE_HEIGHT_MM * MM_TO_IN),
     sharex=True,
     sharey=True,
     constrained_layout=True,
 )
+
+ax_top, ax_bot = axes2   # left = constant, right = variable discharge
  
-ax_top, ax_bot = axes2
- 
-# --- Top Panel: Constant Flow ---
-top_curves = []
+# --- Left Panel: Constant Flow ---
 if 'constant' in results:
     prof_c  = results['constant']
     color_c = SCENARIO_COLORS.get('constant', '#888888')
  
     # Plot Water Level & Bed Level
-    ax_top.plot(bin_centres, prof_c['p95'], color=color_c, lw=1.5, ls='--')
-    ax_top.plot(bin_centres, prof_c['p95_bl'], color='saddlebrown', lw=2.0)
+    ax_top.plot(bin_centres, prof_c['p95'], color=color_c, lw=1.5, ls='--', label='p95 water level')
+    ax_top.plot(bin_centres, prof_c['p95_bl'], color='saddlebrown', lw=2.0, label='p95 bed level (bar top)')
  
     # Shade Accommodation Space
-    ax_top.fill_between(bin_centres, prof_c['p95_bl'], prof_c['p95'], color=color_c, alpha=0.15)
- 
-    top_curves = [
-        (bin_centres, prof_c['p95'], 'p95 water level', color_c),
-        (bin_centres, prof_c['p95_bl'], 'p95 bed level (bar top)', 'saddlebrown'),
-    ]
+    ax_top.fill_between(bin_centres, prof_c['p95_bl'], prof_c['p95'], color=color_c, alpha=0.15,
+                        label='accommodation space')
  
     # Formatting
-    ax_top.set_ylabel('elevation [m]')
+    ax_top.set_ylabel('Elevation [m]')
     ax_top.set_title(
         r"constant discharge $(Q_{\mathrm{mean}} = 500\ \mathrm{m^3/s})$",
         fontweight="bold",
     )
     ax_top.axhline(0, color='grey', lw=0.7, ls=':')
     ax_top.grid(True, lw=0.4, alpha=0.5)
-    ax_top.yaxis.set_minor_locator(mticker.AutoMinorLocator())
  
  
-# --- Bottom Panel: Hydro-variability (Low, Mean, Peak) ---
-bot_curves = []
+# --- Right Panel: Hydro-variability (Mean, Peak) ---
 if 'peak flow' in results:
     prof_p = results['peak flow']
  
     # 1. Plot Bed Level first so it sits cleanly in the background/fill
-    ax_bot.plot(bin_centres, prof_p['p95_bl'], color='saddlebrown', lw=2.0)
-    bot_curves.append((bin_centres, prof_p['p95_bl'], 'p95 bed level (bar top)', 'saddlebrown'))
+    ax_bot.plot(bin_centres, prof_p['p95_bl'], color='saddlebrown', lw=2.0, label='p95 bed level (bar top)')
  
     # 2. Plot Mean Flow Water Level
     if 'mean flow' in results:
-        ax_bot.plot(bin_centres, results['mean flow']['p95'], color=SCENARIO_COLORS['mean flow'], lw=1.5)
-        bot_curves.append((bin_centres, results['mean flow']['p95'], 'p95 water level (mean flow)', SCENARIO_COLORS['mean flow']))
+        ax_bot.plot(bin_centres, results['mean flow']['p95'], color=SCENARIO_COLORS['mean flow'], lw=1.5,
+                    label='p95 water level (mean flow)')
  
     # 3. Plot Peak Flow Water Level
-    ax_bot.plot(bin_centres, prof_p['p95'], color=SCENARIO_COLORS['peak flow'], lw=2.0)
-    bot_curves.append((bin_centres, prof_p['p95'], 'p95 water level (peak flow)', SCENARIO_COLORS['peak flow']))
+    ax_bot.plot(bin_centres, prof_p['p95'], color=SCENARIO_COLORS['peak flow'], lw=2.0,
+                label='p95 water level (peak flow)')
  
     # 4. Shade total maximum accommodation space (bounded by the Peak Flow high water mark)
-    ax_bot.fill_between(bin_centres, prof_p['p95_bl'], prof_p['p95'], color=SCENARIO_COLORS['peak flow'], alpha=0.15)
+    ax_bot.fill_between(bin_centres, prof_p['p95_bl'], prof_p['p95'], color=SCENARIO_COLORS['peak flow'], alpha=0.15,
+                        label='accommodation space')
  
-    # Formatting
-    ax_bot.set_ylabel('elevation [m]')
+    # Formatting (y-label only on the left panel, since sharey=True)
     ax_bot.set_title(
         r"variable discharge $(Q_{\mathrm{mean}} = 500\ \mathrm{m^3/s})$",
         fontweight="bold",
     )
     ax_bot.axhline(0, color='grey', lw=0.7, ls=':')
     ax_bot.grid(True, lw=0.4, alpha=0.5)
-    ax_bot.yaxis.set_minor_locator(mticker.AutoMinorLocator())
  
 strip_top_right_spines(ax_top, ax_bot)
  
-# Global X-axis formatting
-ax_bot.set_xlabel('distance along estuary [km]')
+# Global X-axis formatting (both panels side by side, so both need the x-label)
+for ax in (ax_top, ax_bot):
+    ax.set_xlabel('Along-estuary distance [km]')
+    ax.minorticks_off()
 ax_bot.set_xlim(X_MIN / 1000, X_MAX / 1000)
  
-# --- Direct labels instead of a shared legend ---
-add_direct_labels(ax_top, top_curves)
-add_direct_labels(ax_bot, bot_curves)
- 
+# --- Direct labels instead of a legend ---
+# Labels are wrapped onto two lines so they don't eat the panel width; the larger
+# min_sep_frac keeps the two-line labels from overlapping.
+top_curves, bot_curves = [], []
 if 'constant' in results:
-    add_fill_label(ax_top, bin_centres, prof_c['p95_bl'], prof_c['p95'], 'accommodation space', color_c)
+    top_curves = [
+        (bin_centres, prof_c['p95'], 'p95 water\nlevel', color_c),
+        (bin_centres, prof_c['p95_bl'], 'p95 bed level\n(bar top)', 'saddlebrown'),
+    ]
 if 'peak flow' in results:
-    add_fill_label(ax_bot, bin_centres, prof_p['p95_bl'], prof_p['p95'], 'accommodation space', SCENARIO_COLORS['peak flow'])
+    bot_curves = [(bin_centres, prof_p['p95_bl'], 'p95 bed level\n(bar top)', 'saddlebrown')]
+    if 'mean flow' in results:
+        bot_curves.append((bin_centres, results['mean flow']['p95'], 'p95 water level\n(mean flow)', SCENARIO_COLORS['mean flow']))
+    bot_curves.append((bin_centres, prof_p['p95'], 'p95 water level\n(peak flow)', SCENARIO_COLORS['peak flow']))
+add_direct_labels(ax_top, top_curves, min_sep_frac=0.22)
+add_direct_labels(ax_bot, bot_curves, min_sep_frac=0.22)
+
+# The fill is too thin to hold the text, so label it from the empty upper-left
+# corner with an arrow into the thickest part of the shaded region.
+if 'constant' in results:
+    add_fill_label(ax_top, bin_centres, prof_c['p95_bl'], prof_c['p95'], 'accommodation space', color_c,
+                   text_xy=(0.03, 0.85))
+if 'peak flow' in results:
+    add_fill_label(ax_bot, bin_centres, prof_p['p95_bl'], prof_p['p95'], 'accommodation space', SCENARIO_COLORS['peak flow'],
+                   text_xy=(0.03, 0.85))
  
 # --- Save Fig 2 ---
-out_path_accom = OUTPUT_DIR / OUTPUT_FILENAME_ACCOM
-fig2.savefig(out_path_accom, bbox_inches='tight')
+save_agu_figure(fig2, OUTPUT_DIR / OUTPUT_STEM_ACCOM)
 plt.show()
-print(f"Saved Figure 2: {out_path_accom}")
  
 # %%

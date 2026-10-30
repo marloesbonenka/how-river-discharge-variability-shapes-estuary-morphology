@@ -98,6 +98,34 @@ def apply_plot_style(style='AGU', font_size=8, title_delta=1, tick_delta=0, **rc
         plt.rcParams.update(rc_overrides)
 
 
+def save_agu_figure(fig, path_stem, formats=('png', 'pdf'), dpi=300, transparent=True):
+    """Save a figure at exactly its figsize (e.g. 170 mm AGU full-page width).
+
+    Deliberately does NOT use bbox_inches='tight': that re-crops to the content
+    and adds pad_inches, so the saved file ends up ~3 mm wider than requested and
+    differs between figures. Instead, use constrained_layout to keep everything
+    inside the figure; this function warns if any artist still sticks out (it
+    would be clipped in the saved file).
+
+    path_stem : output path without extension; one file is written per format.
+    """
+    fig.canvas.draw()
+    tight = fig.get_tightbbox(fig.canvas.get_renderer())   # inches
+    w_in, h_in = fig.get_size_inches()
+    overflow_mm = {
+        'left': -tight.x0, 'bottom': -tight.y0,
+        'right': tight.x1 - w_in, 'top': tight.y1 - h_in,
+    }
+    overflow_mm = {k: v * 25.4 for k, v in overflow_mm.items() if v * 25.4 > 0.1}
+    if overflow_mm:
+        print(f"  WARNING: content extends outside the figure and will be clipped: "
+              + ", ".join(f"{k} {v:.1f} mm" for k, v in overflow_mm.items()))
+
+    for ext in formats:
+        fig.savefig(f"{path_stem}.{ext}", dpi=dpi, transparent=transparent)
+    print(f"Saved {w_in * 25.4:.0f} x {h_in * 25.4:.0f} mm: {path_stem}.[{', '.join(formats)}]")
+
+
 def compute_map_figsize(xlim, ylim, width_mm, cbar_frac, mm_to_in=1 / 25.4):
     """Derive (width_in, height_in) from data aspect ratio so an equal-aspect
     map fills the frame at the target print width, with space reserved for
@@ -142,6 +170,14 @@ def add_direct_labels(ax, curves, min_sep_frac=0.09, x_offset=6):
         if entries[i][1] - entries[i - 1][1] < min_gap:
             entries[i][1] = entries[i - 1][1] + min_gap
 
+    # If the stack was pushed above the axes, shift it back down so the top
+    # label stays within the y-range
+    y_top = y_hi - 0.5 * min_gap
+    if entries[-1][1] > y_top:
+        entries[-1][1] = y_top
+        for i in range(len(entries) - 2, -1, -1):
+            entries[i][1] = min(entries[i][1], entries[i + 1][1] - min_gap)
+
     label_bbox = dict(
         boxstyle="round,pad=0.15",
         facecolor="white",
@@ -160,20 +196,41 @@ def add_direct_labels(ax, curves, min_sep_frac=0.09, x_offset=6):
             va="center",
             bbox=label_bbox,
             clip_on=False,  # Allows label to draw outside the main axes boundary
+            annotation_clip=False,  # Draw even if the (shifted) anchor lies outside the axes
         )
 
     # Optional: Automatically pad the right x-margin so labels have space inside the figure
     ax.set_xmargin(0.1)
 
 
-def add_fill_label(ax, x_data, y_lower, y_upper, text, color):
-    """Place a label inside a fill_between region, centred on its x-extent."""
+def add_fill_label(ax, x_data, y_lower, y_upper, text, color, text_xy=None):
+    """Place a label inside a fill_between region, centred on its x-extent.
+
+    If text_xy (axes fraction) is given, the label is placed there instead, with
+    an arrow pointing at the thickest part of the fill (searched in the central
+    70 % of its x-extent). Use this when the fill is too thin to hold the text.
+    """
     finite = np.isfinite(y_lower) & np.isfinite(y_upper)
     if not finite.any():
         return
     xf = x_data[finite]
     yl = y_lower[finite]
     yu = y_upper[finite]
+
+    if text_xy is not None:
+        x_lo = xf.min() + 0.15 * (xf.max() - xf.min())
+        x_hi = xf.max() - 0.15 * (xf.max() - xf.min())
+        gap = np.where((xf >= x_lo) & (xf <= x_hi), yu - yl, -np.inf)
+        idx = np.argmax(gap)
+        ax.annotate(
+            text,
+            xy=(xf[idx], 0.5 * (yl[idx] + yu[idx])),
+            xytext=text_xy,
+            textcoords='axes fraction',
+            color=color, ha='left', va='center', style='italic',
+            arrowprops=dict(arrowstyle='-|>', color=color, lw=0.75, shrinkA=2, shrinkB=0),
+        )
+        return
 
     x_mid = 0.355 * (xf.min() + xf.max())
     idx = np.argmin(np.abs(xf - x_mid))
