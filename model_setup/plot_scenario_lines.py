@@ -208,7 +208,7 @@ fig1.suptitle(f"River discharge scenarios ($Q_{{\\mathrm{{mean}}}}$ = {TOTAL_Q} 
 
 fig1.savefig(OUTPUT_DIR / f"scenario_lines_Q{TOTAL_Q}_by_frequency.png", dpi=300, bbox_inches="tight", transparent=True)
 fig1.savefig(OUTPUT_DIR / f"scenario_lines_Q{TOTAL_Q}_by_frequency.pdf", bbox_inches="tight", transparent=True)
-plt.show(fig1)
+plt.show()
 print(f"Saved: scenario_lines_Q{TOTAL_Q}_by_frequency (.png/.pdf)")
 
 # ============================================================================
@@ -288,7 +288,7 @@ fig2.suptitle(f"River discharge scenarios ($Q_{{\\mathrm{{mean}}}}$ = {TOTAL_Q} 
 
 fig2.savefig(OUTPUT_DIR / f"scenario_lines_Q{TOTAL_Q}_by_amplitude.png", dpi=300, bbox_inches="tight", transparent=True)
 fig2.savefig(OUTPUT_DIR / f"scenario_lines_Q{TOTAL_Q}_by_amplitude.pdf", bbox_inches="tight", transparent=True)
-plt.show(fig2)
+plt.show()
 print(f"Saved: scenario_lines_Q{TOTAL_Q}_by_amplitude (.png/.pdf)")
 
 #%% ============================================================================
@@ -332,7 +332,7 @@ for peak_ratio in target_ratios:
     pr_tag = pr_label.replace(".", "p")
     fig3.savefig(OUTPUT_DIR / f"scenario_line_Q{TOTAL_Q}_n{TARGET_N_PEAKS}_pm{pr_tag}.png", dpi=300, bbox_inches="tight", transparent=True)
     fig3.savefig(OUTPUT_DIR / f"scenario_line_Q{TOTAL_Q}_n{TARGET_N_PEAKS}_pm{pr_tag}.pdf", bbox_inches="tight", transparent=True)
-    plt.show(fig3)
+    plt.show()
     print(f"Saved: scenario_line_Q{TOTAL_Q}_n{TARGET_N_PEAKS}_pm{pr_tag} (.png/.pdf)")
 
 #%% ============================================================================
@@ -366,6 +366,116 @@ if target_ratios:
 
     fig4.savefig(OUTPUT_DIR / f"scenario_lines_Q{TOTAL_Q}_n{TARGET_N_PEAKS}_allratios.png", dpi=300, bbox_inches="tight", transparent=True)
     fig4.savefig(OUTPUT_DIR / f"scenario_lines_Q{TOTAL_Q}_n{TARGET_N_PEAKS}_allratios.pdf", bbox_inches="tight", transparent=True)
-    plt.show(fig4)
+    plt.show()
     print(f"Saved: scenario_lines_Q{TOTAL_Q}_n{TARGET_N_PEAKS}_allratios (.png/.pdf)")
+
+#%% ============================================================================
+# Plot 5 – flow duration curves (cf. Arkesteijn et al., 2019): Q_w versus P
+# ============================================================================
+# P = probability of the flow rate over one full repeating cycle (365 daily values).
+# EXCEEDANCE = True : P is the exceedance probability, P(Q > Q_w)  (standard flow-duration curve)
+# EXCEEDANCE = False: P is the cumulative (non-exceedance) probability, P(Q <= Q_w)
+EXCEEDANCE = True
+P_LABEL = "P [-] (exceedance probability)" if EXCEEDANCE else "P [-] (cumulative probability)"
+CYCLE_DAYS = 365   # length of the repeating discharge pattern in the boundary files
+
+
+def flow_duration_curve(csv_path, n_days=CYCLE_DAYS):
+    """Return (P, Q_w) for the first `n_days` of a discharge_cumulative.csv.
+
+    Using exactly one cycle (and not calendar years) avoids counting a repeated
+    day, since the pattern repeats every 365 days. Weibull plotting position.
+    """
+    df = pd.read_csv(csv_path)
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    df = df.sort_values("timestamp")
+    t0 = df["timestamp"].iloc[0]
+    q = df.loc[df["timestamp"] < t0 + pd.Timedelta(days=n_days), "discharge_m3s"].to_numpy()
+    q_desc = np.sort(q)[::-1]
+    p_exc = np.arange(1, len(q_desc) + 1) / (len(q_desc) + 1)
+    return (p_exc if EXCEEDANCE else 1 - p_exc), q_desc
+
+
+def _pr_label(r):
+    return f"{int(r)}" if r == int(r) else f"{r}"
+
+
+def _plot_fdc(ax, peak_ratio, n_peaks, info):
+    p, q = flow_duration_curve(info["csv"])
+    is_const = (peak_ratio == 1.0 and n_peaks == 0)
+    ax.plot(p, q,
+            color=GREY_CONST if is_const else RATIO_COLOR[peak_ratio],
+            linewidth=0.9 if is_const else 1.0,
+            linestyle='--' if is_const else '-',
+            zorder=2 if is_const else 3)
+
+
+fdc_handles = [
+    mlines.Line2D([], [],
+                  color=GREY_CONST if (r == 1.0 and min(all_n_peaks) == 0) else RATIO_COLOR[r],
+                  linewidth=0.9 if (r == 1.0 and min(all_n_peaks) == 0) else 1.2,
+                  linestyle='--' if (r == 1.0 and min(all_n_peaks) == 0) else '-',
+                  label=f"$R_{{\\mathrm{{peak}}}}$ = {_pr_label(r)}"
+                        + (" (constant)" if (r == 1.0 and min(all_n_peaks) == 0) else ""))
+    for r in all_peak_ratios
+]
+
+# --- 5a: one panel, all scenarios overlaid (curves with equal R_peak coincide) ---
+fig5 = plt.figure(figsize=(single_width_in, single_height_in))
+gs5 = gridspec.GridSpec(
+    1, 1, figure=fig5,
+    top=1 - TOP_MARGIN_IN / single_height_in,
+    bottom=BOTTOM_MARGIN_IN / single_height_in,
+)
+ax = fig5.add_subplot(gs5[0, 0])
+for (peak_ratio, n_peaks), info in sorted(scenarios.items()):
+    _plot_fdc(ax, peak_ratio, n_peaks, info)
+ax.axhline(TOTAL_Q, color="k", linewidth=0.4, linestyle=":", zorder=1)
+ax.set_xlim(0, 1)
+ax.set_ylim(global_ylim)
+ax.grid(True, alpha=0.2, linewidth=0.3)
+ax.set_ylabel("$Q_{\\mathrm{w}}$ [m³/s]", fontsize=8)
+ax.set_title(f"Flow duration curves ($Q_{{\\mathrm{{mean}}}}$ = {TOTAL_Q} m³/s)", fontsize=8)
+ax.legend(handles=fdc_handles, fontsize=6, loc="upper right", frameon=True)
+fig5.supxlabel(P_LABEL, y=SUPXLABEL_Y_IN / single_height_in)
+fig5.savefig(OUTPUT_DIR / f"flow_duration_curves_Q{TOTAL_Q}.png", dpi=300, bbox_inches="tight", transparent=True)
+fig5.savefig(OUTPUT_DIR / f"flow_duration_curves_Q{TOTAL_Q}.pdf", bbox_inches="tight", transparent=True)
+plt.show()
+print(f"Saved: flow_duration_curves_Q{TOTAL_Q} (.png/.pdf)")
+
+# --- 5b: one panel per n_peaks, colored by peak_ratio (same layout as Plot 1) ---
+fig6 = plt.figure(figsize=(fig1_width_in, fig1_height_in))
+gs6 = gridspec.GridSpec(
+    1, n_cols1, figure=fig6,
+    wspace=0.08,
+    top=1 - TOP_MARGIN_IN / fig1_height_in,
+    bottom=BOTTOM_MARGIN_IN / fig1_height_in,
+)
+ax_ref6 = None
+for ci, n_peaks in enumerate(all_n_peaks):
+    ax = fig6.add_subplot(gs6[0, ci], sharey=ax_ref6)
+    if ax_ref6 is None:
+        ax_ref6 = ax
+    for peak_ratio in all_peak_ratios:
+        if (peak_ratio, n_peaks) in scenarios:
+            _plot_fdc(ax, peak_ratio, n_peaks, scenarios[(peak_ratio, n_peaks)])
+    ax.axhline(TOTAL_Q, color="k", linewidth=0.4, linestyle=":", zorder=1)
+    ax.set_xlim(0, 1)
+    ax.set_xticks([0.25, 0.5, 0.75])   # avoid touching tick labels between panels
+    ax.tick_params(axis="x", labelsize=6)
+    ax.set_ylim(global_ylim)
+    ax.grid(True, alpha=0.2, linewidth=0.3)
+    ax.set_title(f"$n_{{\\mathrm{{peaks}}}}$ = {n_peaks}", fontsize=8)
+    if ci == 0:
+        ax.set_ylabel("$Q_{\\mathrm{w}}$ [m³/s]", fontsize=8)
+    else:
+        ax.tick_params(labelleft=False)
+fig6.legend(handles=fdc_handles, fontsize=8, loc="lower center", ncol=len(all_peak_ratios),
+            bbox_to_anchor=(0.5, LEGEND_Y_IN / fig1_height_in), frameon=True)
+fig6.supxlabel(P_LABEL, y=SUPXLABEL_Y_IN / fig1_height_in)
+fig6.suptitle(f"Flow duration curves ($Q_{{\\mathrm{{mean}}}}$ = {TOTAL_Q} m³/s)", fontsize=8, y=0.99)
+fig6.savefig(OUTPUT_DIR / f"flow_duration_curves_Q{TOTAL_Q}_by_frequency.png", dpi=300, bbox_inches="tight", transparent=True)
+fig6.savefig(OUTPUT_DIR / f"flow_duration_curves_Q{TOTAL_Q}_by_frequency.pdf", bbox_inches="tight", transparent=True)
+plt.show()
+print(f"Saved: flow_duration_curves_Q{TOTAL_Q}_by_frequency (.png/.pdf)")
 #%%
