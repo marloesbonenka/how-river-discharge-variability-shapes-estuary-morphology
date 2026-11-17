@@ -1,4 +1,4 @@
-"""Fluvial slope adjustment along the estuary: where does the bed steepen with R_peak?
+"""Bed slope along the estuary: where does the bed steepen with R_peak?
 One panel per discharge (Q = 250 / 500 / 1000 m3/s: tide- to river-dominated), single snapshot.
 
 Hypothesis (fluvial analogue, Exner): discharge variability raises the sediment supply and
@@ -54,7 +54,7 @@ RUN_IDS = [1, 6, 9, 10, 11]     # constant + n_peaks = 3 series, run at all disc
 BASE_DIR = Path(r"U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output")
 
 # nearest available timestep per run is used; optional override from the command line, e.g.
-# `python fig_slope_adjustment_tidal_intrusion_allQ.py 2030-01-01`. The detailed-hydro runs
+# `python fig_bed_slope_along_estuary_allQ.py 2030-01-01`. The detailed-hydro runs
 # (tidal intrusion) start from the 2031-01-01 morphology.
 TARGET_DATE = np.datetime64(sys.argv[1] if len(sys.argv) > 1 else '2031-01-01')
 
@@ -113,7 +113,7 @@ FONT_SIZE = 8           # one size for all text: ticks, labels, titles, legend
 
 apply_plot_style('AGU', font_size=FONT_SIZE, title_delta=0)
 
-OUTPUT_DIR = BASE_DIR / 'output_plots_combined' / 'slope_adjustment_tidal_intrusion_allQ'
+OUTPUT_DIR = BASE_DIR / 'output_plots_combined' / 'bed_slope_along_estuary_allQ'
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -302,17 +302,16 @@ for c, (Q, ax) in enumerate(zip(DISCHARGES, axes)):
 #%% --- 8. LEGEND + SAVE ---
 legend_handles = []
 if SHOW_NOISY_ENVELOPE and slope_env:
-    legend_handles.append(mpatches.Patch(facecolor=ENV_COLOR, alpha=ENV_ALPHA, label='autogenic variability'))
+    legend_handles.append(mpatches.Patch(facecolor=ENV_COLOR, alpha=ENV_ALPHA, label='autogenic\nvariability'))
 legend_handles.append(mlines.Line2D([], [], color=GREY_CONST, linewidth=LINE_WIDTH_CONST, linestyle='--',
                                     label='constant'))
 legend_handles += [mlines.Line2D([], [], color=PM_COLOR[pm], linewidth=LINE_WIDTH, label=f'{RPEAK} = {_fmt(pm)}')
                    for pm in all_pm_vals]
 legend_handles.append(mlines.Line2D([], [], color=GREY_CONST, linewidth=LINE_WIDTH_CONST, linestyle=':',
-                                    label='tidal intrusion limit (constant)'))
-fig.legend(handles=legend_handles, loc='outside lower center', ncol=int(np.ceil(len(legend_handles) / 2)),
-           frameon=True)
+                                    label='tidal intrusion\nlimit (constant)'))
+fig.legend(handles=legend_handles, loc='outside right center', ncol=1, frameon=True)
 
-save_name = f"AGU_slope_along_estuary_allQ_{TARGET_DATE}_{MASK_MODE}_w{SLOPE_WINDOW_KM:g}km"
+save_name = f"AGU_bed_slope_along_estuary_allQ_{TARGET_DATE}_{MASK_MODE}_w{SLOPE_WINDOW_KM:g}km"
 save_path = OUTPUT_DIR / f"{save_name}.png"
 fig.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
 fig.savefig(OUTPUT_DIR / f"{save_name}.pdf", bbox_inches='tight', transparent=True)

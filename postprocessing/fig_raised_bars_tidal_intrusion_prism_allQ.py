@@ -1,4 +1,5 @@
-"""Where the bars are raised, and how far the tide still reaches, along the estuary.
+"""Raised bars, tidal intrusion and tidal prism: where the bars are raised, how far the tide still
+reaches along the estuary, and how the tidal prism at the mouth changes.
 
 Discharge peaks raise the bars from the river end seaward; the raised bars push the tidal
 intrusion limit seaward. Same view as the tidal-intrusion panel of
@@ -17,13 +18,14 @@ with a shared R_peak axis:
   arrow+label  largest reduction of the tidal intrusion length in that panel, normalised by
                the constant run: dL_TI = (L_TI - L_TI,const) / L_TI,const, with L_TI the
                intrusion length measured from the mouth (X_MOUTH_KM).
-(d)   tidal prism at the mouth (km 20) relative to the constant run [%], all discharges
-      (marker shape = discharge, as in a-c; direct labels = Q [m3/s]; constant run = 0 %).
+(d)   tidal prism at the mouth (km 20) [10^6 m3], all discharges (marker shape = discharge, as
+      in a-c; direct labels = Q [m3/s]; grey marker + dashed line = constant run). Arrow+label:
+      largest relative change vs. the constant run [%], so absolute and relative read together.
 
 Data: map caches of the morphodynamic runs (bars); LTI_summary.csv and tidal_prism_summary.csv
 of plot_map_hydro_tidalmetrics_comparison_allQ.py (tidal intrusion limits, tidal prism; both
 from the mean-flow detailed-hydro runs on the final morphology).
-Writes bar_extent_summary.csv (reach end, tidal intrusion limit, dL_TI and prism change per run).
+Writes raised_bars_summary.csv (reach end, tidal intrusion limit, dL_TI and prism change per run).
 """
 #%% --- Imports ---
 from pathlib import Path
@@ -78,8 +80,8 @@ BAR_LINE_WIDTH = 6
 MARKER_SIZE = 5
 LTI_LABEL_DY = 0.22            # arrow + label of the largest reduction: this far below its row [R_peak units]
 XTICK_STEP_KM = 5
-PRISM_XTICK_STEP = 10          # tidal prism panel [%]
-PRISM_XLIM = (-35, 5)          # room for the direct labels around the outermost markers
+PRISM_XTICK_STEP = 25          # tidal prism panel [10^6 m3]
+PRISM_XLIM = (30, 160)         # room for the direct labels around the outermost markers
 TREND_COLOR = '0.6'            # thin line connecting the prism markers of one discharge
 
 # --- AGU figure sizing ---
@@ -90,7 +92,7 @@ FONT_SIZE = 8
 
 apply_plot_style('AGU', font_size=FONT_SIZE, title_delta=0)
 
-OUTPUT_DIR = BASE_DIR / 'output_plots_combined' / 'bar_extent_tidal_intrusion'
+OUTPUT_DIR = BASE_DIR / 'output_plots_combined' / 'raised_bars_tidal_intrusion_prism'
 CACHE_DIR = OUTPUT_DIR / 'profile_cache'
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -179,7 +181,7 @@ prism = pd.read_csv(PRISM_CSV)[['discharge', 'pm', 'n', 'prism_Mm3']]
 summary = summary.merge(prism, on=['discharge', 'pm', 'n'], how='left')
 P_const = summary[summary.n == 0].set_index('discharge').prism_Mm3
 summary['tidal_prism_change_rel'] = summary.prism_Mm3 / summary.discharge.map(P_const) - 1
-summary.to_csv(OUTPUT_DIR / 'bar_extent_summary.csv', index=False)
+summary.to_csv(OUTPUT_DIR / 'raised_bars_summary.csv', index=False)
 print(summary.to_string(index=False))
 
 q_list = [q for q in DISCHARGES if q in set(summary.discharge)]
@@ -229,21 +231,37 @@ for c, (q, ax) in enumerate(zip(q_list, bar_axes)):
 axes[0].set_yticks([1] + all_pm)
 axes[0].set_ylim(0.5, all_pm[-1] + 0.5)
 
-# (d) tidal prism change vs constant, all discharges (marker shape = discharge, as in a-c)
-ax_prism.axvline(0, color=GREY_CONST, linewidth=LINE_WIDTH_CONST, linestyle='--', zorder=1)
+# (d) tidal prism, all discharges: absolute value on the x-axis (constant run = grey marker +
+# dashed line, as in a-c), largest relative change vs. constant as arrow + direct label
 for q in q_list:
-    s = summary[(summary.discharge == q) & summary.tidal_prism_change_rel.notna()].sort_values('pm')
-    ax_prism.plot(100 * s.tidal_prism_change_rel, s.pm, color=TREND_COLOR, linewidth=0.6, zorder=2)
-    for _, r in s[s.n > 0].iterrows():   # constant run = 0 % by definition: line only
-        ax_prism.plot(100 * r.tidal_prism_change_rel, r.pm, marker=DISCHARGE_MARKERS[q],
-                      color=PM_COLOR[r.pm], markersize=MARKER_SIZE,
+    s = summary[(summary.discharge == q) & summary.prism_Mm3.notna()].sort_values('pm')
+    if s.empty:
+        continue
+    p_const = P_const.get(q, np.nan)
+    if np.isfinite(p_const):
+        ax_prism.axvline(p_const, color=GREY_CONST, linewidth=LINE_WIDTH_CONST, linestyle='--', zorder=1)
+    ax_prism.plot(s.prism_Mm3, s.pm, color=TREND_COLOR, linewidth=0.6, zorder=2)
+    for _, r in s.iterrows():
+        ax_prism.plot(r.prism_Mm3, r.pm, marker=DISCHARGE_MARKERS[q],
+                      color=GREY_CONST if r.n == 0 else PM_COLOR[r.pm], markersize=MARKER_SIZE,
                       markeredgecolor='k', markeredgewidth=0.6, linestyle='', zorder=3)
     top = s.iloc[-1]   # direct label: Q [m3/s] above the R_peak = max marker
-    ax_prism.annotate(f'{q}', (100 * top.tidal_prism_change_rel, top.pm), xytext=(0, 3.5),
+    ax_prism.annotate(f'{q}', (top.prism_Mm3, top.pm), xytext=(0, 3.5),
                       textcoords='offset points', ha='center', va='bottom')
+    var = s[(s.n > 0) & s.tidal_prism_change_rel.notna()]
+    if np.isfinite(p_const) and len(var):   # largest relative reduction: arrow + direct label
+        r = var.loc[var.tidal_prism_change_rel.idxmin()]
+        y, col = r.pm - LTI_LABEL_DY, PM_COLOR[r.pm]
+        ax_prism.annotate('', xy=(r.prism_Mm3, y), xytext=(p_const, y),
+                          arrowprops=dict(arrowstyle='-|>', color=col, lw=0.8, mutation_scale=6,
+                                          shrinkA=0, shrinkB=0), zorder=5)
+        ax_prism.text(0.5 * (r.prism_Mm3 + p_const), y - 0.05,
+                      f"{r.tidal_prism_change_rel * 100:+.0f}%".replace('-', '−'),
+                      ha='center', va='top', color=col, zorder=6,
+                      bbox=dict(facecolor='white', edgecolor='none', alpha=0.8, pad=0.5))
 ax_prism.set_xlim(PRISM_XLIM)
 ax_prism.xaxis.set_major_locator(MultipleLocator(PRISM_XTICK_STEP))
-ax_prism.set_xlabel('Change vs. constant [%]')
+ax_prism.set_xlabel('Tidal prism [10$^6$ m³]')
 ax_prism.set_title('Tidal prism')
 ax_prism.grid(True, color='0.9', linewidth=0.5)
 ax_prism.text(-0.02, 1.02, f'({chr(ord("a") + len(q_list))})', transform=ax_prism.transAxes,
@@ -260,7 +278,7 @@ legend_labels = ['reach with raised bars', 'tidal intrusion limit', 'tidal intru
 fig.legend(legend_handles, legend_labels, handler_map={tuple: HandlerTuple(ndivide=None, pad=0.6)},
            loc='outside lower center', ncol=len(legend_handles), frameon=True)
 
-save_agu_figure(fig, OUTPUT_DIR / f"AGU_bar_extent_tidal_intrusion_allQ_n{PROFILE_N}")
+save_agu_figure(fig, OUTPUT_DIR / f"AGU_raised_bars_tidal_intrusion_prism_allQ_n{PROFILE_N}")
 plt.show()
 
 # %%

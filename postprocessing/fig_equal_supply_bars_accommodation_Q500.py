@@ -1,5 +1,5 @@
-"""Same river sediment supply, different bars: a few high peaks build higher bars than many
-lower peaks, while the channels stay at the same level.
+"""Equal sediment supply, different bars and accommodation space: a few high peaks build higher
+bars than many lower peaks, while the channels stay at the same level.
 
 Layout (AGU style, Calibri 8 pt for all text, 170 mm wide), two rows:
   (a) change in river sediment supply relative to the constant run [%] (cumulative bedload
@@ -30,7 +30,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
 import matplotlib.patches as mpatches
-from matplotlib.legend_handler import HandlerTuple
 from matplotlib.ticker import MultipleLocator
 import cmocean
 
@@ -89,6 +88,12 @@ WET_FRACTION_THRESHOLD = 0.1   # cell must be wet in >= 10 % of the timesteps
 MEAN_FLOW_COLOR = '#e08214'    # as in plot_map_hydro_accommodationspace.py
 BED_COLOR = 'saddlebrown'
 FILL_ALPHA = 0.15
+# Direct labels in the bottom row: line labels in panel (e) as (x [km], text offset [pt], ha),
+# accommodation-space label in panel (d) at x [km], halfway between bar top and high water
+LABEL_POS = {'peak': (38.5, (0, 4), 'right'),
+             'mean': (43.0, (-6, -22), 'center'),
+             'bar': (24.8, (0, -5), 'center')}
+ACCOM_LABEL_X_KM = 25.5
 
 RPEAK = r'$R_{\mathrm{peak}}$'
 NPEAKS = r'$n_{\mathrm{peaks}}$'
@@ -107,7 +112,7 @@ FONT_SIZE = 8
 
 apply_plot_style('AGU', font_size=FONT_SIZE, title_delta=0)
 
-OUTPUT_DIR = BASE_DIR / 'output_plots_combined' / 'equal_supply_bars_channels'
+OUTPUT_DIR = BASE_DIR / 'output_plots_combined' / 'equal_supply_bars_accommodation'
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -311,32 +316,48 @@ ax_d.set_ylabel('Elevation [m]')
 for ax, letter in zip((ax_a, ax_b, ax_c, ax_d, ax_e, ax_f), 'abcdef'):
     ax.text(-0.02, 1.02, f'({letter})', transform=ax.transAxes, ha='right', va='bottom')
 
-legend_handles = [mpatches.Patch(facecolor=ENV_COLOR, alpha=ENV_ALPHA, label='autogenic variability'),
+legend_handles = [mpatches.Patch(facecolor=ENV_COLOR, alpha=ENV_ALPHA, label='autogenic\nvariability'),
                   mlines.Line2D([], [], color=GREY_CONST, linewidth=LINE_WIDTH_CONST, linestyle='--',
                                 label='constant')]
 legend_handles += [mlines.Line2D([], [], color=PM_COLOR[pm], linewidth=LINE_WIDTH,
-                                 label=f'{RPEAK} = {pm}, {NPEAKS} = {n}') for pm, n in EQUAL_SUPPLY_RUNS]
-sf_top.legend(handles=legend_handles, loc='outside lower center', ncol=len(legend_handles), frameon=True)
+                                 label=f'{RPEAK} = {pm}\n{NPEAKS} = {n}') for pm, n in EQUAL_SUPPLY_RUNS]
+# inside panel (c), bottom right
+ax_c.legend(handles=legend_handles, loc='lower right', ncol=1, frameon=True, framealpha=1,
+            borderaxespad=0.3, handlelength=1.6, handletextpad=0.4, labelspacing=0.2, borderpad=0.3)
 
-# Bottom legend: the peak-flow line and the fill take the colour of the run (grey for constant)
-var_pms = [pm for pm, _ in ACCOM_PANELS if pm != 1]
-peak_lines = tuple(mlines.Line2D([], [], color=PM_COLOR[pm], linewidth=LINE_WIDTH) for pm in var_pms)
-fills = tuple(mpatches.Patch(facecolor=c, alpha=FILL_ALPHA)
-              for c in [GREY_CONST] + [PM_COLOR[pm] for pm in var_pms])
-accom_handles = [
-    mlines.Line2D([], [], color=BED_COLOR, linewidth=LINE_WIDTH),
-    mlines.Line2D([], [], color=GREY_CONST, linewidth=LINE_WIDTH, linestyle='--'),
-    mlines.Line2D([], [], color=MEAN_FLOW_COLOR, linewidth=LINE_WIDTH),
-    peak_lines,
-    fills,
-]
-accom_labels = ['p95 bed level (bar top)', 'p95 water level, constant',
-                'p95 water level, mean flow', 'p95 water level, peak flow', 'accommodation space']
-sf_bot.legend(handles=accom_handles, labels=accom_labels, loc='outside lower center',
-              ncol=3, frameon=True,
-              handler_map={tuple: HandlerTuple(ndivide=None, pad=0.3)})
+# Bottom row: direct labels instead of a legend. The lines are labelled once, in the
+# LABEL_PANEL run (the other variable run follows the same colours); the accommodation space
+# is labelled in the constant panel.
+def interp_at(xq, y):
+    ok = np.isfinite(y)
+    return np.interp(xq, ACCOM_X_KM[ok], y[ok])
 
-save_name = "AGU_equal_supply_bars_channels_Q500_" + "_".join(f"pm{pm}n{n}" for pm, n in EQUAL_SUPPLY_RUNS)
+
+def label_line(ax, key, y, text, color):
+    """Text at LABEL_POS[key] (x [km], offset [pt], ha) from the line y; a leader line is
+    drawn when the text is offset by more than a few points."""
+    xq, (dx, dy), ha = LABEL_POS[key]
+    leader = dict(arrowstyle='-', color=color, linewidth=0.6, shrinkA=1, shrinkB=0) \
+        if np.hypot(dx, dy) > 8 else None
+    ax.annotate(text, (xq, interp_at(xq, y)), xytext=(dx, dy), textcoords='offset points',
+                ha=ha, va='bottom' if dy > 0 else 'top', color=color, fontsize=FONT_SIZE - 1,
+                arrowprops=leader)
+
+
+LABEL_PANEL = (3, 5)
+runs = accom.get(LABEL_PANEL, {})
+if 'peak' in runs:
+    label_line(ax_e, 'peak', runs['peak']['p95_wl'], 'peak-flow high water', PM_COLOR[LABEL_PANEL[0]])
+    label_line(ax_e, 'bar', runs['peak']['p95_bl'], 'bar top', BED_COLOR)
+if 'mean' in runs:
+    label_line(ax_e, 'mean', runs['mean']['p95_wl'], 'mean-flow\nhigh water', MEAN_FLOW_COLOR)
+const_run = accom.get((1, 0), {}).get('constant')
+if const_run is not None:
+    xq = ACCOM_LABEL_X_KM
+    ax_d.text(xq, 0.5 * (interp_at(xq, const_run['p95_bl']) + interp_at(xq, const_run['p95_wl'])),
+              'accommodation space', ha='center', va='center', color='0.3', fontsize=FONT_SIZE - 1)
+
+save_name = "AGU_equal_supply_bars_accommodation_Q500_" + "_".join(f"pm{pm}n{n}" for pm, n in EQUAL_SUPPLY_RUNS)
 save_agu_figure(fig, OUTPUT_DIR / save_name)
 plt.show()
 

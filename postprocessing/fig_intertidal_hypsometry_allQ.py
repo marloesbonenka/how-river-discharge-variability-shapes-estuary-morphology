@@ -1,4 +1,4 @@
-"""Higher discharge peaks raise the intertidal surface.
+"""Intertidal hypsometry: higher discharge peaks raise the intertidal surface.
 
 Layout (AGU style, Calibri 8 pt for all text, 170 mm wide), one row, n_peaks = PROFILE_N series:
   (a-c) one panel per discharge (Q = 250 / 500 / 1000 m3/s): non-dimensional hypsometric
@@ -7,7 +7,7 @@ Layout (AGU style, Calibri 8 pt for all text, 170 mm wide), one row, n_peaks = P
         y = bed elevation. A higher curve = higher flats, independent of the total exposed
         area (printed to the console, not shown).
   Colours: constant run grey, R_peak Blues palette (light -> dark).
-  The tidal prism panel moved to fig_bar_extent_tidal_intrusion_allQ.py (panel d).
+  The tidal prism is not in this figure: it is panel (d) of fig_raised_bars_tidal_intrusion_prism_allQ.py.
 
 Data: intertidal_hypsometry_curves_long.csv (cumulative area fraction per run) and
 intertidal_hypsometry_area_summary.csv (total intertidal area per run) of
@@ -31,7 +31,7 @@ from functions.F_general import apply_plot_style, save_agu_figure
 #%% --- 1. SETTINGS ---
 BASE_DIR = Path(r"U:\PhDNaturalRhythmEstuaries\Models\2_RiverDischargeVariability_domain45x15_Gaussian\Model_Output")
 HYPSO_DIR = BASE_DIR / 'output_plots_combined' / 'intertidal_hypsometry_comparison'
-OUTPUT_DIR = BASE_DIR / 'output_plots_combined' / 'intertidal_hypsometry_tidal_prism'
+OUTPUT_DIR = BASE_DIR / 'output_plots_combined' / 'intertidal_hypsometry_allQ'
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 DISCHARGES = [250, 500, 1000]
@@ -97,9 +97,10 @@ legend_handles = [mlines.Line2D([], [], color=GREY_CONST, linewidth=LINE_WIDTH_C
                                 label='constant')]
 legend_handles += [mlines.Line2D([], [], color=PM_COLOR[pm], linewidth=LINE_WIDTH, label=f'{RPEAK} = {pm}')
                    for pm in all_pm]
-fig.legend(handles=legend_handles, loc='outside lower center', ncol=len(legend_handles), frameon=True)
+hyp_axes[0].legend(handles=legend_handles, loc='upper left', ncol=1, frameon=True, framealpha=1,
+                   borderaxespad=0.3, handlelength=1.6, handletextpad=0.4, labelspacing=0.2, borderpad=0.3)
 
-save_agu_figure(fig, OUTPUT_DIR / f"AGU_intertidal_hypsometry_tidal_prism_allQ_n{PROFILE_N}")
+save_agu_figure(fig, OUTPUT_DIR / f"AGU_intertidal_hypsometry_allQ_n{PROFILE_N}")
 plt.show()
 
 # %%

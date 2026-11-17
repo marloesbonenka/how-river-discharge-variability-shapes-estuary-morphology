@@ -1,5 +1,5 @@
-"""Mean flow, ebb: variable discharge gives fewer, wider channels in the tidal-fluvial transition
-zone, while the cumulative channel width stays similar.
+"""Number and width of channels at ebb (mean flow, Q = 500 m3/s): variable discharge gives fewer,
+wider channels in the tidal-fluvial transition zone, while the cumulative channel width stays similar.
 
 Detailed-hydrodynamic runs at mean flow, Q = 500 m3/s: the constant run (pm1_n0) and the
 n_peaks = 3 runs with R_peak = 2-5. Ebb = minimum water level over the final 12 hours of each run.
@@ -61,7 +61,6 @@ SMOOTH_KM = 3                       # running-mean window [cross-sections]; 1 = 
 XTICK_STEP_KM = 5
 
 RPEAK = r'$R_{\mathrm{peak}}$'
-NPEAKS = r'$n_{\mathrm{peaks}}$'
 GREY_CONST = "#7f7f7f"
 LINE_WIDTH = 1.4
 LINE_WIDTH_CONST = 0.9
@@ -76,7 +75,7 @@ FONT_SIZE = 8
 
 apply_plot_style('AGU', font_size=FONT_SIZE, title_delta=0)
 
-OUTPUT_DIR = BASE_DIR / 'output_plots_combined' / 'mean_flow_channels_ebb'
+OUTPUT_DIR = BASE_DIR / 'output_plots_combined' / 'channel_number_width'
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -163,10 +162,11 @@ for ax, letter in zip((ax_a, ax_b, ax_c), 'abc'):
 legend_handles = [mlines.Line2D([], [], color=GREY_CONST, linewidth=LINE_WIDTH_CONST, linestyle='--',
                                 label='constant')]
 legend_handles += [mlines.Line2D([], [], color=PM_COLOR[pm], linewidth=LINE_WIDTH,
-                                 label=f'{RPEAK} = {pm}, {NPEAKS} = {N_PEAKS}') for pm in ALL_PM]
-fig.legend(handles=legend_handles, loc='outside lower center', ncol=len(legend_handles), frameon=True)
+                                 label=f'{RPEAK} = {pm}') for pm in ALL_PM]
+ax_c.legend(handles=legend_handles, loc='lower left', ncol=1, frameon=True, framealpha=1,
+            borderaxespad=0.3, handlelength=1.6, handletextpad=0.4, labelspacing=0.2, borderpad=0.3)
 
-save_agu_figure(fig, OUTPUT_DIR / f"AGU_channels_mean_flow_ebb_Q{DISCHARGE}_n{N_PEAKS}")
+save_agu_figure(fig, OUTPUT_DIR / f"AGU_channel_number_width_ebb_Q{DISCHARGE}_n{N_PEAKS}")
 plt.show()
 
 # %%
