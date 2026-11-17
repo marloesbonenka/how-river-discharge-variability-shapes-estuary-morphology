@@ -9,8 +9,10 @@ Layout (AGU style, Calibri 8 pt for all text, 170 mm wide), one row:
   Local mean-bed slope along the estuary: least-squares line through the mean bed level per
   1-km bin over a SLOPE_WINDOW_KM moving window (positive = bed rising towards the river).
   The slope between neighbouring 1-km bins alone is dominated by bars and channels (the
-  console prints the autogenic band width of both). Dotted line: tidal intrusion limit of
-  the constant run. Runs: the n_peaks = 3 series (R_peak 2-5) plus the constant run, the
+  console prints the autogenic band width of both). Dotted lines: tidal intrusion limit of
+  the constant run (grey) and of the run with the largest change in that panel (its R_peak
+  colour); the arrow and direct label give that change in intrusion length from the mouth,
+  dL_TI / L_TI,const (dimensionless). Runs: the n_peaks = 3 series (R_peak 2-5) plus the constant run, the
   only series run at all discharges. Colours: R_peak value, Blues palette (light -> dark).
   The bed-level profiles themselves are in fig_bedlevel_percentiles_pm_n.py.
 
@@ -75,6 +77,9 @@ APPEND_VARIABLES = True
 
 # Tidal intrusion limit per run (columns: discharge, pm, n, LTI_instant_max_km)
 LTI_CSV = BASE_DIR / 'output_plots_combined' / 'hydro_tidalmetrics_comparison' / 'LTI_summary.csv'
+X_MOUTH_KM = 20          # estuary mouth (tidal prism cross-section km20); intrusion length measured from here
+ESTUARY_LENGTH_KM = 25   # mouth (km 20) to river boundary (km 45)
+LTI_ARROW_Y = 0.86       # height of the tidal-intrusion arrow [axes fraction]; label just above
 
 # Autogenic variability envelope — noisy repeats of the constant scenario, per discharge:
 # (noise folder holding cached_data, [run folders relative to it])
@@ -236,10 +241,19 @@ PM_COLOR[1] = GREY_CONST
 
 
 #%% --- 4. TIDAL INTRUSION LIMIT OF THE CONSTANT RUN (from LTI_CSV) ---
-lti_const = {}   # {Q: limit [km]}
+lti_const = {}        # {Q: limit [km]}
+lti_max_change = {}   # {Q: (pm, limit [km], dL/L_const [-])} for the run with the largest change
+lti_df = None
 if LTI_CSV.exists():
     lti_df = pd.read_csv(LTI_CSV)
     lti_const = lti_df[lti_df.n == 0].set_index('discharge')['LTI_instant_max_km'].to_dict()
+    for Q in DISCHARGES:
+        runs = lti_df[(lti_df.discharge == Q) & (lti_df.n > 0) & lti_df.pm.isin(profiles[Q].keys())]
+        if Q not in lti_const or runs.empty:
+            continue
+        rel = (runs.LTI_instant_max_km - lti_const[Q]) / (lti_const[Q] - X_MOUTH_KM)
+        i = rel.abs().idxmax()
+        lti_max_change[Q] = (runs.pm[i], runs.LTI_instant_max_km[i], rel[i])
 else:
     print(f"[WARNING] Tidal intrusion summary not found: {LTI_CSV} "
           f"(run plot_map_hydro_tidalmetrics_comparison_allQ.py)")
@@ -266,6 +280,23 @@ for Q in DISCHARGES:
                      for pm, s in sorted(slopes[Q].items()) if pm > 1)
     print(f"  Q = {Q}: change vs constant, mean landward/seaward of the tidal limit "
           f"({lti_const.get(Q, np.nan):.2f} km): {vals}")
+# Change in tidal intrusion length (dimensionless). Length L_TI is measured from the mouth
+# (X_MOUTH_KM), so the ratio does not depend on where the model's x-origin is.
+#   L/L_const       relative to the constant run at the same discharge
+#   dL/L_estuary    shift as a fraction of the estuary length (mouth to river end)
+if lti_df is not None:
+    print(f"\nTidal intrusion length L_TI = x_LTI - {X_MOUTH_KM:g} km "
+          f"(estuary length {ESTUARY_LENGTH_KM:g} km)")
+    for Q in DISCHARGES:
+        sub = lti_df[lti_df.discharge == Q].sort_values('pm')
+        if Q not in lti_const or sub.empty:
+            continue
+        L_const = lti_const[Q] - X_MOUTH_KM
+        print(f"  Q = {Q}: L_const = {L_const:.2f} km")
+        for _, r in sub[sub.n > 0].iterrows():
+            L = r.LTI_instant_max_km - X_MOUTH_KM
+            print(f"    R{_fmt(r.pm)}: L = {L:.2f} km, L/L_const = {L / L_const:.3f} "
+                  f"({(L - L_const) / L_const:+.1%}), dL/L_estuary = {(L - L_const) / ESTUARY_LENGTH_KM:+.1%}")
 # Why a moving window: width of the autogenic band for a 1-km slope vs the moving window
 for Q in slope_env:
     refs = noisy_profiles[Q] + [profiles[Q][1]]
@@ -284,6 +315,18 @@ for c, (Q, ax) in enumerate(zip(DISCHARGES, axes)):
         ax.fill_between(X_KM, *slope_env[Q], color=ENV_COLOR, alpha=ENV_ALPHA, linewidth=0, zorder=1)
     if Q in lti_const:
         ax.axvline(lti_const[Q], color=GREY_CONST, linewidth=LINE_WIDTH_CONST, linestyle=':', zorder=2)
+    if Q in lti_max_change:   # largest change in tidal intrusion: limit, arrow and direct label
+        pm_max, x_max, rel_max = lti_max_change[Q]
+        col = PM_COLOR.get(pm_max, GREY_CONST)
+        ax.axvline(x_max, color=col, linewidth=LINE_WIDTH_CONST, linestyle=':', zorder=2)
+        ax.annotate('', xy=(x_max, LTI_ARROW_Y), xytext=(lti_const[Q], LTI_ARROW_Y),
+                    xycoords=('data', 'axes fraction'),
+                    arrowprops=dict(arrowstyle='-|>', color=col, lw=0.8, mutation_scale=6,
+                                    shrinkA=0, shrinkB=0), zorder=5)
+        ax.text(0.5 * (x_max + lti_const[Q]), LTI_ARROW_Y + 0.03,
+                f"$\\Delta L_{{\\mathrm{{TI}}}}$ = {rel_max * 100:+.0f}%".replace('-', '−'),
+                transform=ax.get_xaxis_transform(), ha='center', va='bottom', color=col, zorder=6,
+                bbox=dict(facecolor='white', edgecolor='none', alpha=0.8, pad=0.5))
     if 1 in slopes[Q]:
         ax.plot(X_KM, slopes[Q][1], color=GREY_CONST, linewidth=LINE_WIDTH_CONST, linestyle='--', zorder=3)
     for pm_val in all_pm_vals:
@@ -308,7 +351,7 @@ legend_handles.append(mlines.Line2D([], [], color=GREY_CONST, linewidth=LINE_WID
 legend_handles += [mlines.Line2D([], [], color=PM_COLOR[pm], linewidth=LINE_WIDTH, label=f'{RPEAK} = {_fmt(pm)}')
                    for pm in all_pm_vals]
 legend_handles.append(mlines.Line2D([], [], color=GREY_CONST, linewidth=LINE_WIDTH_CONST, linestyle=':',
-                                    label='tidal intrusion limit (constant)'))
+                                    label='tidal intrusion limit'))
 fig.legend(handles=legend_handles, loc='outside lower center', ncol=int(np.ceil(len(legend_handles) / 2)),
            frameon=True)
 
