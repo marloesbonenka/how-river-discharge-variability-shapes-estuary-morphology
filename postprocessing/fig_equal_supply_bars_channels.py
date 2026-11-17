@@ -79,7 +79,7 @@ ACCOM_PANELS = [(1, 0), (3, 5), (5, 1)]
 ACCOM_RUNS = {
     (1, 0): {'constant': DHR_DIR / 'dhr_01_Qr500_pm1_n0.9724783'},
     (3, 5): {'mean': DHR_DIR / 'dhr_03_Qr500_pm3_n5_mean.964903',
-             'peak': DHR_DIR / 'dhr_03_Qr500_pm3_n5_peak.964907'},
+             'peak': DHR_DIR / 'dhr_03_Qr500_pm3_n5_peak'},
     (5, 1): {'mean': DHR_DIR / 'dhr_05_Qr500_pm5_n1_mean.964908',
              'peak': DHR_DIR / 'dhr_05_Qr500_pm5_n1_peak.965221'},
 }

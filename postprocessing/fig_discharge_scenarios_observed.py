@@ -228,7 +228,7 @@ fig.text((LEFT + a_right) / 2 / FIG_W, (a_bottom - 0.30) / fig_h, 'month of year
 legend_handles = [
     mlines.Line2D([], [], color=ratio_color(r), linewidth=0.9 if r == 1.0 else 1.2,
                   linestyle='--' if r == 1.0 else '-',
-                  label=f"{RPEAK} = {fmt_ratio(r)}" + ("\n(constant)" if r == 1.0 else ""))
+                  label=f"{RPEAK} = {fmt_ratio(r)}")
     for r in all_ratios
 ]
 fig.legend(handles=legend_handles, loc='center left', ncol=1, frameon=True, labelspacing=0.35,
