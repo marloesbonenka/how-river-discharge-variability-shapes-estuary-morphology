@@ -215,6 +215,7 @@ axes = axes[0]
 ax_prism, bar_axes = axes[0], axes[1:]
 
 # (b-d) raised-bar reach and tidal intrusion limit, one panel per discharge
+lti_labels = []   # direct labels of the largest reduction; kept inside their panel after layout
 for c, (q, ax) in enumerate(zip(q_list, bar_axes)):
     s = summary[summary.discharge == q]
     const_lim = s.loc[s.n == 0, 'tidal_intrusion_limit_km']
@@ -234,10 +235,11 @@ for c, (q, ax) in enumerate(zip(q_list, bar_axes)):
         ax.annotate('', xy=(r.tidal_intrusion_limit_km, y), xytext=(const_lim.iloc[0], y),
                     arrowprops=dict(arrowstyle='-|>', color=col, lw=0.8, mutation_scale=6,
                                     shrinkA=0, shrinkB=0), zorder=5)
-        ax.text(0.5 * (r.tidal_intrusion_limit_km + const_lim.iloc[0]), y - 0.05,
-                f"{r.tidal_intrusion_change_rel * 100:+.0f}%".replace('-', '−'),
-                ha='center', va='top', color=col, zorder=6,
-                bbox=dict(facecolor='white', edgecolor='none', alpha=0.8, pad=0.5))
+        d_km = r.tidal_intrusion_limit_km - const_lim.iloc[0]
+        lti_labels.append(ax.text(0.5 * (r.tidal_intrusion_limit_km + const_lim.iloc[0]), y - 0.05,
+                                  f"{d_km:+.1f} km ({r.tidal_intrusion_change_rel * 100:+.0f}%)".replace('-', '−'),
+                                  ha='center', va='top', color=col, zorder=6,
+                                  bbox=dict(facecolor='white', edgecolor='none', alpha=0.8, pad=0.5)))
     ax.set_title(f'$Q$ = {q} m\u00b3/s')
     ax.set_xlabel('Along-estuary distance [km]')
     ax.grid(True, color='0.9', linewidth=0.5)
@@ -293,6 +295,17 @@ legend_handles.append(mlines.Line2D([], [], color=GREY_CONST, linewidth=LINE_WID
 legend_labels = ['reach with raised bars', 'tidal intrusion limit', 'tidal intrusion limit, constant']
 fig.legend(legend_handles, legend_labels, handler_map={tuple: HandlerTuple(ndivide=None, pad=0.6)},
            loc='outside lower center', ncol=len(legend_handles), frameon=True)
+
+# shift the "km (%)" labels horizontally so they stay inside their panel (after the final layout)
+fig.canvas.draw()
+for t in lti_labels:
+    ax = t.axes
+    bb, ab = t.get_window_extent(), ax.get_window_extent()
+    pad = 2   # px
+    dx_px = max(ab.x0 + pad - bb.x0, 0) - max(bb.x1 - (ab.x1 - pad), 0)
+    if dx_px:
+        x_disp, y_disp = ax.transData.transform(t.get_position())
+        t.set_position(ax.transData.inverted().transform((x_disp + dx_px, y_disp)))
 
 save_agu_figure(fig, OUTPUT_DIR / f"AGU_raised_bars_tidal_intrusion_prism_allQ_n{PROFILE_N}")
 plt.show()
