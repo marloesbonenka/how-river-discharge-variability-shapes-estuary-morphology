@@ -8,7 +8,13 @@ with the reach of raised bars added.
 
 Layout (AGU style, Calibri 8 pt for all text, 170 mm wide), n_peaks = PROFILE_N series, one row
 with a shared R_peak axis:
-(a-c) one panel per discharge (Q = 250 / 500 / 1000 m3/s: tide- to river-dominated):
+(a)   tidal prism at the mouth (km 20) [10^6 m3], all discharges (marker shape = discharge, as
+      in b-d; direct labels = Q [m3/s]; grey marker + dashed line = constant run). Arrow+label:
+      largest relative change vs. the constant run [%], so absolute and relative read together.
+      Slightly wider than b-d.
+(b-d) one panel per discharge (Q = 250 / 500 / 1000 m3/s: tide- to river-dominated), all at the
+      same km-per-mm scale; a panel whose raised reach reaches the seaward end of the analysis
+      bins (km 20) starts REACH_PAD_KM further seaward so the bar visibly ends:
   blue bar     reach with raised bars: from the river end (km 45) seaward to where the p95
                bed level drops back to that of the constant run (within the constant run's
                autogenic variability: K_SIGMA x its temporal std over the last EVAL_YEARS).
@@ -17,10 +23,9 @@ with a shared R_peak axis:
   dashed line  tidal intrusion limit of the constant run.
   arrow+label  largest reduction of the tidal intrusion length in that panel, normalised by
                the constant run: dL_TI = (L_TI - L_TI,const) / L_TI,const, with L_TI the
-               intrusion length measured from the mouth (X_MOUTH_KM).
-(d)   tidal prism at the mouth (km 20) [10^6 m3], all discharges (marker shape = discharge, as
-      in a-c; direct labels = Q [m3/s]; grey marker + dashed line = constant run). Arrow+label:
-      largest relative change vs. the constant run [%], so absolute and relative read together.
+               intrusion length measured from the mouth (X_MOUTH_KM). NB: at high Q the
+               constant-run intrusion length is short (Q1000: 5.45 km), so a small shift in km
+               gives a large percentage.
 
 Data: map caches of the morphodynamic runs (bars); LTI_summary.csv and tidal_prism_summary.csv
 of plot_map_hydro_tidalmetrics_comparison_allQ.py (tidal intrusion limits, tidal prism; both
@@ -80,6 +85,8 @@ BAR_LINE_WIDTH = 6
 MARKER_SIZE = 5
 LTI_LABEL_DY = 0.22            # arrow + label of the largest reduction: this far below its row [R_peak units]
 XTICK_STEP_KM = 5
+REACH_PAD_KM = 2.0             # extra x-range seaward of km 20 when a raised reach runs up to km 20
+PRISM_WIDTH_RATIO = 1.35       # width of the prism panel relative to a 25-km bar panel
 PRISM_XTICK_STEP = 25          # tidal prism panel [10^6 m3]
 PRISM_XLIM = (30, 160)         # room for the direct labels around the outermost markers
 TREND_COLOR = '0.6'            # thin line connecting the prism markers of one discharge
@@ -190,13 +197,24 @@ PM_COLOR = {pm: plt.cm.Blues(0.35 + 0.55 * i / max(len(all_pm) - 1, 1)) for i, p
 
 
 #%% --- 4. FIGURE ---
+# x-range per bar panel: start further seaward when the raised reach runs up to km 20 (the seaward
+# end of the analysis bins), so the bar visibly ends instead of being cut by the y-axis
+x0_bins = X_BINS[0] / 1000
+bar_xlim = {}
+for q in q_list:
+    reach_min = summary.loc[summary.discharge == q, 'raised_bars_from_km'].min()
+    bar_xlim[q] = (x0_bins - REACH_PAD_KM if reach_min <= x0_bins else x0_bins, RIVER_END_KM)
+# width ratios: prism panel wider; bar panels proportional to their x-range (same km-per-mm scale)
+width_ratios = [PRISM_WIDTH_RATIO] + [(bar_xlim[q][1] - bar_xlim[q][0]) / (RIVER_END_KM - x0_bins)
+                                      for q in q_list]
+
 fig, axes = plt.subplots(1, len(q_list) + 1, sharey=True, squeeze=False,
                          figsize=(FIGURE_WIDTH_MM * MM_TO_IN, FIGURE_HEIGHT_MM * MM_TO_IN),
-                         constrained_layout=True)
+                         gridspec_kw={'width_ratios': width_ratios}, constrained_layout=True)
 axes = axes[0]
-bar_axes, ax_prism = axes[:-1], axes[-1]
+ax_prism, bar_axes = axes[0], axes[1:]
 
-# (a-c) raised-bar reach and tidal intrusion limit, one panel per discharge
+# (b-d) raised-bar reach and tidal intrusion limit, one panel per discharge
 for c, (q, ax) in enumerate(zip(q_list, bar_axes)):
     s = summary[summary.discharge == q]
     const_lim = s.loc[s.n == 0, 'tidal_intrusion_limit_km']
@@ -223,16 +241,15 @@ for c, (q, ax) in enumerate(zip(q_list, bar_axes)):
     ax.set_title(f'$Q$ = {q} m\u00b3/s')
     ax.set_xlabel('Along-estuary distance [km]')
     ax.grid(True, color='0.9', linewidth=0.5)
-    ax.text(-0.02, 1.02, f'({chr(ord("a") + c)})', transform=ax.transAxes, ha='right', va='bottom')
-    ax.set_xlim(X_BINS[0] / 1000, RIVER_END_KM)
+    ax.text(-0.02, 1.02, f'({chr(ord("b") + c)})', transform=ax.transAxes, ha='right', va='bottom')
+    ax.set_xlim(bar_xlim[q])
     ax.xaxis.set_major_locator(MultipleLocator(XTICK_STEP_KM))
-    if c == 0:
-        ax.set_ylabel(f'Peak ratio {RPEAK} (1 = constant)')
-axes[0].set_yticks([1] + all_pm)
-axes[0].set_ylim(0.5, all_pm[-1] + 0.5)
+ax_prism.set_ylabel(f'Peak ratio {RPEAK} (1 = constant)')
+ax_prism.set_yticks([1] + all_pm)
+ax_prism.set_ylim(0.5, all_pm[-1] + 0.5)
 
-# (d) tidal prism, all discharges: absolute value on the x-axis (constant run = grey marker +
-# dashed line, as in a-c), largest relative change vs. constant as arrow + direct label
+# (a) tidal prism, all discharges: absolute value on the x-axis (constant run = grey marker +
+# dashed line, as in b-d), largest relative change vs. constant as arrow + direct label
 for q in q_list:
     s = summary[(summary.discharge == q) & summary.prism_Mm3.notna()].sort_values('pm')
     if s.empty:
@@ -264,8 +281,7 @@ ax_prism.xaxis.set_major_locator(MultipleLocator(PRISM_XTICK_STEP))
 ax_prism.set_xlabel('Tidal prism [10$^6$ m³]')
 ax_prism.set_title('Tidal prism')
 ax_prism.grid(True, color='0.9', linewidth=0.5)
-ax_prism.text(-0.02, 1.02, f'({chr(ord("a") + len(q_list))})', transform=ax_prism.transAxes,
-              ha='right', va='bottom')
+ax_prism.text(-0.02, 1.02, '(a)', transform=ax_prism.transAxes, ha='right', va='bottom')
 
 legend_handles = [mlines.Line2D([], [], color=PM_COLOR[all_pm[-1]], linewidth=BAR_LINE_WIDTH,
                                 solid_capstyle='butt', label='reach with raised bars')]
