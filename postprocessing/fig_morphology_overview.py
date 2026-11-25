@@ -31,7 +31,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.colors import TwoSlopeNorm
+from matplotlib.colors import LinearSegmentedColormap, TwoSlopeNorm
 from matplotlib.lines import Line2D
 from matplotlib.ticker import FixedLocator, FuncFormatter, MultipleLocator
 import cmocean
@@ -144,7 +144,13 @@ NET_MIN_VELOCITY = 1e-4     # [m/s] below this no along-flow projection
 # so each side gets its own range (~98th percentile of that side), white = 0
 NET_VMIN, NET_VMAX = -3e-7, 1e-5
 NET_TICKS = [-3e-7, 0, 5e-6, 1e-5]
-NET_CMAP = cmocean.cm.curl
+# cmocean curl has an off-white (slightly pink) centre; pin the midpoint (= 0 under the
+# TwoSlopeNorm) to pure white, keeping curl's colours elsewhere
+_curl_nodes = np.linspace(0, 1, 33)
+NET_CMAP = LinearSegmentedColormap.from_list(
+    "curl_white",
+    [(x, "white" if x == 0.5 else cmocean.cm.curl(x)) for x in _curl_nodes],
+    N=257)   # odd N so that the central bin is exactly white
 
 MAP_XLIM = (20_000, 45_000)
 MAP_YLIM = (5_000, 10_000)
@@ -553,7 +559,7 @@ scen_name = f"{RPEAK} = 5, {NPEAKS} = 1"
 axn = add_axes_in(LEFT_MARGIN_IN, y_maps, map_w, map_h)
 pc_n = net_da.ugrid.plot(ax=axn, cmap=NET_CMAP, norm=TwoSlopeNorm(0.0, NET_VMIN, NET_VMAX),
                          add_colorbar=False, edgecolors="none")
-map_label(axn, f"{scen_name} – net transport per tidal cycle, mean flow")
+map_label(axn, f"{scen_name} – mean flow")
 # positive (seaward) flow and transport direction: right to left
 axn.annotate("", xy=(0.88, 0.72), xytext=(0.99, 0.72), xycoords="axes fraction",
              arrowprops=dict(arrowstyle="-|>", color="k", lw=0.75, mutation_scale=7))
@@ -565,7 +571,7 @@ axb = add_axes_in(LEFT_MARGIN_IN, y_maps + map_h + MAP_HSPACE_IN, map_w, map_h)
 k = RUN_P["k_end"]
 pc = detrended_bed(RUN_P, k).ugrid.plot(ax=axb, cmap=BED_CMAP, vmin=-BED_LIM, vmax=BED_LIM,
                                         add_colorbar=False, edgecolors="none")
-map_label(axb, f"{scen_name} – end ({RUN_P['t'][k]:.0f} yr)")
+map_label(axb, f"{scen_name} – after {RUN_P['t'][k]:.0f} years")
 format_map(axb, show_x=False)    # x axis labelled once, below the tidal-range panel (f)
 panel_letter(axb, "e")
 axm = [axn, axb]
