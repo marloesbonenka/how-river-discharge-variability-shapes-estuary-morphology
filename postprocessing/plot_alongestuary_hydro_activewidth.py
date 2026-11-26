@@ -205,7 +205,7 @@ fig.supylabel('active width [km]')
 
 legend_handles = [mlines.Line2D([], [], color=c, linestyle=ls, linewidth=LINE_WIDTH, label=label)
                   for label, _, _, c, ls in SCENARIOS]
-axes[0].legend(handles=legend_handles, loc='upper right', frameon=True)
+axes[0].legend(handles=legend_handles, loc='upper right', frameon=False)
 
 fig.suptitle(f"Active width (gross transport > {ACTIVE_FRAC:.0%} of constant-run p95) "
              f"\u2014 last {WINDOW_HOURS:.0f}h tidal cycle", fontsize=9)

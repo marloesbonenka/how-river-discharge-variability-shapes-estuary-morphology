@@ -512,7 +512,7 @@ def plot_snapshot(snapshot_key, snapshot_results, metric):
                                              linestyle='-', label=line_label(v)))
             fig.legend(handles=handles, title=legend_title, title_fontsize=FONTSIZE_LABELS,
                        fontsize=FONTSIZE_TICKS, loc='lower center', ncol=len(handles),
-                       bbox_to_anchor=(0.5, legend_y), frameon=True)
+                       bbox_to_anchor=(0.5, legend_y), frameon=False)
             fig.suptitle(
                 f'Effect of {varied_symbol} on {metric} bed level {norm_title}\n'
                 f'Snapshot: {snap_label},  Q = {DISCHARGE} m³/s',

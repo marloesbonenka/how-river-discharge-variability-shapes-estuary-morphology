@@ -32,6 +32,7 @@ def get_agu_rc(font_size=8, title_delta=1, tick_delta=0, mathtext_font='Calibri'
         'xtick.labelsize': tick_size,
         'ytick.labelsize': tick_size,
         'legend.fontsize': tick_size,
+        'legend.frameon': False,         # no outline / fill behind legends
         'figure.titlesize': font_size + title_delta,
         'figure.labelsize': font_size,   # fig.supxlabel / fig.supylabel (default 'large')
         'mathtext.fontset': 'custom',
@@ -71,6 +72,7 @@ WHITEFIG_RC = {
     'grid.color':          'white',
     'legend.facecolor':    'none',
     'legend.edgecolor':    'white',
+    'legend.frameon':      False,
     'savefig.transparent': True,
 }
 

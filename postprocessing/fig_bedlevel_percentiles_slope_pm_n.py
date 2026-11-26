@@ -242,7 +242,7 @@ for metric, ylabel in FIGURE_SPECS:
         ax.text(-0.02, 1.02, f'({letter})', transform=ax.transAxes, ha='right', va='bottom')
 
     axes[0].set_ylabel(ylabel)
-    fig.legend(handles=legend_handles, loc='outside lower center', ncol=len(legend_handles), frameon=True)
+    fig.legend(handles=legend_handles, loc='outside lower center', ncol=len(legend_handles), frameon=False)
 
     save_name = (f"AGU_{metric}_slope_pm_n_allQ_{TARGET_DATE}_{MASK_MODE}"
                  f"_fit{FIT_RANGE_KM[0]}-{FIT_RANGE_KM[1]}km")

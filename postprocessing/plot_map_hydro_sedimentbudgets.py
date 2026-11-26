@@ -1119,7 +1119,7 @@ def plot_potential_change(res):
     if draw_channel_outline(ax, res):
         ax.plot([], [], color=CHANNEL_OUTLINE_COLOR, linewidth=0.8,
                 label=f"Channel ({res.get('channel_text') or 'footprint'})")
-        ax.legend(loc="lower left", fontsize=7, frameon=True)
+        ax.legend(loc="lower left", fontsize=7, frameon=False)
 
     style_map_axes(
         ax,
@@ -1159,7 +1159,7 @@ def plot_measured_bed_change(res):
     if draw_channel_outline(ax, res):
         ax.plot([], [], color=CHANNEL_OUTLINE_COLOR, linewidth=0.8,
                 label=f"Channel ({res.get('channel_text') or 'footprint'})")
-        ax.legend(loc="lower left", fontsize=7, frameon=True)
+        ax.legend(loc="lower left", fontsize=7, frameon=False)
     style_map_axes(ax, "Measured bed-level change (last - first output)\n"
                        f"{res['name']}")
     fig.colorbar(mesh, ax=ax, pad=0.02, extend="both").set_label(

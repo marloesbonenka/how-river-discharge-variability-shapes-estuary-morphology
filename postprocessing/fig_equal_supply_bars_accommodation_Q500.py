@@ -322,7 +322,7 @@ legend_handles = [mpatches.Patch(facecolor=ENV_COLOR, alpha=ENV_ALPHA, label='au
 legend_handles += [mlines.Line2D([], [], color=PM_COLOR[pm], linewidth=LINE_WIDTH,
                                  label=f'{RPEAK} = {pm}\n{NPEAKS} = {n}') for pm, n in EQUAL_SUPPLY_RUNS]
 # inside panel (c), bottom right
-ax_c.legend(handles=legend_handles, loc='lower right', ncol=1, frameon=True, framealpha=1,
+ax_c.legend(handles=legend_handles, loc='lower right', ncol=1, frameon=False,
             borderaxespad=0.3, handlelength=1.6, handletextpad=0.4, labelspacing=0.2, borderpad=0.3)
 
 # Bottom row: direct labels instead of a legend. The lines are labelled once, in the

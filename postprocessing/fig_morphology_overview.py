@@ -5,19 +5,19 @@ Opening figure of the results section. Constant run = 01_Qr500_pm1_n0, peak scen
 = 05_Qr500_pm5_n1 (R_peak = 5, n_peaks = 1).
 
 Layout (AGU style, Calibri 8 pt for all text, 170 mm wide):
-(a)   discharge at km20 (downstream, sea) and km45 (upstream, river), last 24 h of the
+(a)   one-year hydrograph of the R_peak = 5 scenario at km45, with the mean and peak flow
+(b)   discharge at km20 (downstream, sea) and km45 (upstream, river), last 24 h of the
       detailed-hydro runs (positive = seaward, i.e. towards decreasing x)
-(b)   one-year hydrograph of the R_peak = 5 scenario at km45, with the mean and peak flow
 (c)   sediment budget of the constant run: net bed-load export per tidal cycle at
       km20 divided by the river supply at km45 (his cross-sections), vs morphological
       time
-(d)   net sediment transport over a tidal cycle on the final R_peak = 5 bed (detailed-hydro
+(d)   detrended bed level at the end of the R_peak = 5 run
+(e)   net sediment transport over a tidal cycle on the final R_peak = 5 bed (detailed-hydro
       run at the constant-scenario flow): time-mean flood/ebb-signed along-flow transport
       over the last 24 h (~2 M2 cycles), positive = seaward, with the positive flow direction;
       asymmetric colour scale (ebb transport >> flood transport), white = 0
-(e)   detrended bed level at the end of the R_peak = 5 run
 (f)   tidal range along the estuary (per-face max - min water level over the final 12 h,
-      width-averaged over the faces that stay wet) on the final beds, same scenarios as (a)
+      width-averaged over the faces that stay wet) on the final beds, same scenarios as (b)
       plus the R_peak = 5 bed at the base flow 0.8 Qmean (if that detailed-hydro run exists)
 
 Detailed-hydro runs: 2 days of hydrodynamics on the FINAL bed; their own dates
@@ -135,7 +135,7 @@ CENTERLINE_XMIN, CENTERLINE_XMAX, CENTERLINE_Y = 20000, 45000, 7500
 BED_CMAP = create_terrain_colormap()
 BED_LIM = 5
 
-# (d) net sediment transport over a tidal cycle (as in plot_map_hydro_netsedtransport.py)
+# (e) net sediment transport over a tidal cycle (as in plot_map_hydro_netsedtransport.py)
 NET_TRANSPORT_RUN = MEAN_DETAILED_RUN   # R_peak = 5 final bed at the constant-scenario flow
 NET_VARS = ["mesh2d_sxtot", "mesh2d_sytot", "mesh2d_ucx", "mesh2d_ucy"]
 NET_WINDOW_HOURS = 24.0     # last 24 h ~ 2 M2 cycles, time-averaged to one cycle
@@ -144,12 +144,14 @@ NET_MIN_VELOCITY = 1e-4     # [m/s] below this no along-flow projection
 # so each side gets its own range (~98th percentile of that side), white = 0
 NET_VMIN, NET_VMAX = -3e-7, 1e-5
 NET_TICKS = [-3e-7, 0, 5e-6, 1e-5]
-# cmocean curl has an off-white (slightly pink) centre; pin the midpoint (= 0 under the
-# TwoSlopeNorm) to pure white, keeping curl's colours elsewhere
-_curl_nodes = np.linspace(0, 1, 33)
+# reversed cmocean balance (red-blue) (pink = flood / landward, green = ebb / seaward); its centre is off-white
+# (slightly pink), so pin the midpoint (= 0 under the TwoSlopeNorm) to pure white, keeping balance's
+# colours elsewhere
+NET_CMAP_BASE = cmocean.cm.balance_r
+_net_nodes = np.linspace(0, 1, 33)
 NET_CMAP = LinearSegmentedColormap.from_list(
-    "curl_white",
-    [(x, "white" if x == 0.5 else cmocean.cm.curl(x)) for x in _curl_nodes],
+    "net_white",
+    [(x, "white" if x == 0.5 else NET_CMAP_BASE(x)) for x in _net_nodes],
     N=257)   # odd N so that the central bin is exactly white
 
 MAP_XLIM = (20_000, 45_000)
@@ -501,10 +503,11 @@ def map_label(ax, text):
 
 # %% --- (a-c) FORCING AND HYDRODYNAMICS OF THE FINAL MORPHOLOGY ---------------
 
-axg, axf, axh = (add_axes_in(LEFT_MARGIN_IN + i * (line_w + LINE_WSPACE_IN), y_line, line_w, LINE_PANEL_H_IN)
+# left to right: (a) hydrograph, (b) discharge of the detailed runs, (c) sediment budget
+axf, axg, axh = (add_axes_in(LEFT_MARGIN_IN + i * (line_w + LINE_WSPACE_IN), y_line, line_w, LINE_PANEL_H_IN)
                  for i in range(3))
 
-# (a) discharge at km20 (solid) and km45 (dashed), last 24 h of each detailed run
+# (b) discharge at km20 (solid) and km45 (dashed), last 24 h of each detailed run
 for sname, (_, _, c) in SCEN.items():
     for km, ls in ((20, "-"), (45, "--")):
         h, q = q_series[(sname, km)]
@@ -515,9 +518,9 @@ axg.set_ylabel("discharge [m$^3$/s]")
 axg.set_xlim(0, LAST_HOURS)
 axg.set_ylim(top=1.4 * axg.get_ylim()[1])   # room for the panel label above the flood peak
 axg.xaxis.set_major_locator(MultipleLocator(6))
-panel_letter(axg, "a")
+panel_letter(axg, "b")
 
-# (b) one-year hydrograph of the R_peak = 5 scenario, constant level, dots at mean and peak
+# (a) one-year hydrograph of the R_peak = 5 scenario, constant level, dots at mean and peak
 #     (colours explained by the shared legend above the row)
 axf.plot(yr_h, q_h, color=COLOR_PEAK, lw=1.0)
 axf.axhline(q_const, color=COLOR_CONST, ls="--", lw=0.9)
@@ -528,7 +531,7 @@ if BASE_DETAILED_RUN is not None:
 axf.set_xlabel("normalised time [t / year]")
 axf.set_ylabel("river discharge (km 45) [m$^3$/s]")
 axf.set_xlim(0, 1)
-panel_letter(axf, "b")
+panel_letter(axf, "a")
 
 # (c) sediment budget of the constant run: net export at km20 / river supply at km45 per
 #     tidal cycle (running mean); the equilibrium itself is discussed in the text
@@ -544,19 +547,29 @@ for ax in (axg, axf, axh):
     clean(ax)
 
 x_mid = (LEFT_MARGIN_IN + 0.5 * (fig_width_in - LEFT_MARGIN_IN - RIGHT_MARGIN_IN)) / fig_width_in
-# R_peak = 5 entries carry the dot that marks their flow in the hydrograph (b)
+# R_peak = 5 entries carry the dot that marks their flow in the hydrograph (a)
 fig.legend(handles=[Line2D([], [], color=c, lw=1.0, label=s,
                            marker=None if s == "constant" else "o", ms=4, mec="white", mew=0.5)
                     for s, (_, _, c) in SCEN_RANGE.items()]
            + [Line2D([], [], color="k", ls="-", lw=1.0, label="sea (km 20)"),
               Line2D([], [], color="k", ls="--", lw=1.0, label="river (km 45)")],
            loc="upper center", bbox_to_anchor=(x_mid, 1 - 0.02 / fig_height_in), ncol=len(SCEN_RANGE) + 2,
-           frameon=True, handlelength=1.5, handletextpad=0.4, columnspacing=0.9, borderaxespad=0)
+           frameon=False, handlelength=1.5, handletextpad=0.4, columnspacing=0.9, borderaxespad=0)
 
-# %% --- (d) NET SEDIMENT TRANSPORT and (e) BED LEVEL of the R_peak = 5 run at the end ---
+# %% --- (d) BED LEVEL of the R_peak = 5 run at the end and (e) NET SEDIMENT TRANSPORT ---
 
 scen_name = f"{RPEAK} = 5, {NPEAKS} = 1"
-axn = add_axes_in(LEFT_MARGIN_IN, y_maps, map_w, map_h)
+y_bed, y_net = y_maps, y_maps + map_h + MAP_HSPACE_IN
+
+axb = add_axes_in(LEFT_MARGIN_IN, y_bed, map_w, map_h)
+k = RUN_P["k_end"]
+pc = detrended_bed(RUN_P, k).ugrid.plot(ax=axb, cmap=BED_CMAP, vmin=-BED_LIM, vmax=BED_LIM,
+                                        add_colorbar=False, edgecolors="none")
+map_label(axb, f"{scen_name} – after {RUN_P['t'][k]:.0f} years")
+format_map(axb, show_x=False)    # x axis labelled once, below the tidal-range panel (f)
+panel_letter(axb, "d")
+
+axn = add_axes_in(LEFT_MARGIN_IN, y_net, map_w, map_h)
 pc_n = net_da.ugrid.plot(ax=axn, cmap=NET_CMAP, norm=TwoSlopeNorm(0.0, NET_VMIN, NET_VMAX),
                          add_colorbar=False, edgecolors="none")
 map_label(axn, f"{scen_name} – mean flow")
@@ -565,22 +578,14 @@ axn.annotate("", xy=(0.88, 0.72), xytext=(0.99, 0.72), xycoords="axes fraction",
              arrowprops=dict(arrowstyle="-|>", color="k", lw=0.75, mutation_scale=7))
 axn.text(0.87, 0.72, "positive", transform=axn.transAxes, ha="right", va="center")
 format_map(axn, show_x=False)
-panel_letter(axn, "d")
+panel_letter(axn, "e")
+axm = [axb, axn]
 
-axb = add_axes_in(LEFT_MARGIN_IN, y_maps + map_h + MAP_HSPACE_IN, map_w, map_h)
-k = RUN_P["k_end"]
-pc = detrended_bed(RUN_P, k).ugrid.plot(ax=axb, cmap=BED_CMAP, vmin=-BED_LIM, vmax=BED_LIM,
-                                        add_colorbar=False, edgecolors="none")
-map_label(axb, f"{scen_name} – after {RUN_P['t'][k]:.0f} years")
-format_map(axb, show_x=False)    # x axis labelled once, below the tidal-range panel (f)
-panel_letter(axb, "e")
-axm = [axn, axb]
-
-cb_n = fig.colorbar(pc_n, cax=cbar_axes_in(y_maps, map_h), ticks=NET_TICKS, extend="both")
+cb = fig.colorbar(pc, cax=cbar_axes_in(y_bed, map_h))
+cb.set_label("detrended bed\nlevel [m]")
+cb_n = fig.colorbar(pc_n, cax=cbar_axes_in(y_net, map_h), ticks=NET_TICKS, extend="both")
 cb_n.set_label("net transport [m$^2$/s]")
 cb_n.ax.yaxis.set_major_formatter(FuncFormatter(lambda v, pos: "0" if v == 0 else f"{v:.0e}".replace("e-0", "e-")))
-cb = fig.colorbar(pc, cax=cbar_axes_in(y_maps + map_h + MAP_HSPACE_IN, map_h))
-cb.set_label("detrended bed\nlevel [m]")
 
 # %% --- (f) TIDAL RANGE along the estuary, final beds (same width / x axis as the maps) ---
 
@@ -595,7 +600,7 @@ axr.set_xlabel("x [km]")
 axr.set_ylabel("tidal range [m]")
 clean(axr)
 panel_letter(axr, "f")
-fig.align_ylabels([axg] + axm + [axr])
+fig.align_ylabels([axf] + axm + [axr])
 
 # %% --- SAVE -------------------------------------------------------------------
 

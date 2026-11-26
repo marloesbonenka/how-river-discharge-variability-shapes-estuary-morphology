@@ -294,7 +294,7 @@ legend_handles.append(mlines.Line2D([], [], color=GREY_CONST, linewidth=LINE_WID
                                     label='tidal intrusion limit, constant'))
 legend_labels = ['reach with raised bars', 'tidal intrusion limit', 'tidal intrusion limit, constant']
 fig.legend(legend_handles, legend_labels, handler_map={tuple: HandlerTuple(ndivide=None, pad=0.6)},
-           loc='outside lower center', ncol=len(legend_handles), frameon=True)
+           loc='outside lower center', ncol=len(legend_handles), frameon=False)
 
 # shift the "km (%)" labels horizontally so they stay inside their panel (after the final layout)
 fig.canvas.draw()

@@ -97,7 +97,7 @@ legend_handles = [mlines.Line2D([], [], color=GREY_CONST, linewidth=LINE_WIDTH_C
                                 label='constant')]
 legend_handles += [mlines.Line2D([], [], color=PM_COLOR[pm], linewidth=LINE_WIDTH, label=f'{RPEAK} = {pm}')
                    for pm in all_pm]
-hyp_axes[0].legend(handles=legend_handles, loc='upper left', ncol=1, frameon=True, framealpha=1,
+hyp_axes[0].legend(handles=legend_handles, loc='upper left', ncol=1, frameon=False,
                    borderaxespad=0.3, handlelength=1.6, handletextpad=0.4, labelspacing=0.2, borderpad=0.3)
 
 save_agu_figure(fig, OUTPUT_DIR / f"AGU_intertidal_hypsometry_allQ_n{PROFILE_N}")

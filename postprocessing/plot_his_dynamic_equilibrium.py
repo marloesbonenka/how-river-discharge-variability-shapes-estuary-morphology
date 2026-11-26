@@ -235,7 +235,7 @@ fig.align_ylabels(axes[:, 0])
 handles = [mlines.Line2D([], [], color=r['color'], lw=1.0, label=label) for label, r in results.items()]
 handles.append(mpatches.Patch(facecolor='0.85', label=f'equilibrium \u00b1{EQ_TOL:.0%}'))
 fig.legend(handles=handles, loc='upper center', bbox_to_anchor=(0.5, 0.02), ncol=len(handles),
-           frameon=True, handlelength=1.8, columnspacing=1.2)
+           frameon=False, handlelength=1.8, columnspacing=1.2)
 
 save_name = f"AGU_dynamic_equilibrium_km{SEA_KM}-{RIVER_KM}_Q{DISCHARGE}"
 save_path = OUTPUT_DIR / f"{save_name}.png"

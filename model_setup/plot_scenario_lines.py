@@ -201,7 +201,7 @@ fig1.legend(
                            + (" (constant)" if (r == 1.0 and min(all_n_peaks) == 0) else ""))
         for r in all_peak_ratios
     ],
-    fontsize=8, loc="lower center", ncol=len(all_peak_ratios), bbox_to_anchor=(0.5, LEGEND_Y_IN / fig1_height_in), frameon=True,
+    fontsize=8, loc="lower center", ncol=len(all_peak_ratios), bbox_to_anchor=(0.5, LEGEND_Y_IN / fig1_height_in), frameon=False,
 )
 fig1.supxlabel("month of year", y=SUPXLABEL_Y_IN / fig1_height_in)
 fig1.suptitle(f"River discharge scenarios ($Q_{{\\mathrm{{mean}}}}$ = {TOTAL_Q} m³/s)", fontsize=8, y=0.99)
@@ -281,7 +281,7 @@ fig2.legend(
                            + (" (constant)" if (r == 1.0 and n == 0) else ""))
         for r in [min(all_peak_ratios)] for n in all_n_peaks
     ],
-    fontsize=8, loc="lower center", ncol=len(all_n_peaks), bbox_to_anchor=(0.5, LEGEND_Y_IN / fig2_height_in), frameon=True,
+    fontsize=8, loc="lower center", ncol=len(all_n_peaks), bbox_to_anchor=(0.5, LEGEND_Y_IN / fig2_height_in), frameon=False,
 )
 fig2.supxlabel("month of year", y=SUPXLABEL_Y_IN / fig2_height_in)
 fig2.suptitle(f"River discharge scenarios ($Q_{{\\mathrm{{mean}}}}$ = {TOTAL_Q} m³/s)", fontsize=8, y=0.99)
@@ -361,7 +361,7 @@ if target_ratios:
     ax.xaxis.set_major_locator(mdates.MonthLocator(interval=3))
     ax.set_ylabel("Q [m³/s]", fontsize=8)
     ax.set_title(f"$n_{{\\mathrm{{peaks}}}}$ = {TARGET_N_PEAKS}", fontsize=8)
-    ax.legend(fontsize=6, loc="upper right", frameon=True)
+    ax.legend(fontsize=6, loc="upper right", frameon=False)
     fig4.supxlabel("month of year", y=SUPXLABEL_Y_IN / single_height_in)
 
     fig4.savefig(OUTPUT_DIR / f"scenario_lines_Q{TOTAL_Q}_n{TARGET_N_PEAKS}_allratios.png", dpi=300, bbox_inches="tight", transparent=True)
@@ -436,7 +436,7 @@ ax.set_ylim(global_ylim)
 ax.grid(True, alpha=0.2, linewidth=0.3)
 ax.set_ylabel("$Q_{\\mathrm{w}}$ [m³/s]", fontsize=8)
 ax.set_title(f"Flow duration curves ($Q_{{\\mathrm{{mean}}}}$ = {TOTAL_Q} m³/s)", fontsize=8)
-ax.legend(handles=fdc_handles, fontsize=6, loc="upper right", frameon=True)
+ax.legend(handles=fdc_handles, fontsize=6, loc="upper right", frameon=False)
 fig5.supxlabel(P_LABEL, y=SUPXLABEL_Y_IN / single_height_in)
 fig5.savefig(OUTPUT_DIR / f"flow_duration_curves_Q{TOTAL_Q}.png", dpi=300, bbox_inches="tight", transparent=True)
 fig5.savefig(OUTPUT_DIR / f"flow_duration_curves_Q{TOTAL_Q}.pdf", bbox_inches="tight", transparent=True)
@@ -471,7 +471,7 @@ for ci, n_peaks in enumerate(all_n_peaks):
     else:
         ax.tick_params(labelleft=False)
 fig6.legend(handles=fdc_handles, fontsize=8, loc="lower center", ncol=len(all_peak_ratios),
-            bbox_to_anchor=(0.5, LEGEND_Y_IN / fig1_height_in), frameon=True)
+            bbox_to_anchor=(0.5, LEGEND_Y_IN / fig1_height_in), frameon=False)
 fig6.supxlabel(P_LABEL, y=SUPXLABEL_Y_IN / fig1_height_in)
 fig6.suptitle(f"Flow duration curves ($Q_{{\\mathrm{{mean}}}}$ = {TOTAL_Q} m³/s)", fontsize=8, y=0.99)
 fig6.savefig(OUTPUT_DIR / f"flow_duration_curves_Q{TOTAL_Q}_by_frequency.png", dpi=300, bbox_inches="tight", transparent=True)

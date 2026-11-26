@@ -309,7 +309,7 @@ legend_handles += [mlines.Line2D([], [], color=PM_COLOR[pm], linewidth=LINE_WIDT
                    for pm in all_pm_vals]
 legend_handles.append(mlines.Line2D([], [], color=GREY_CONST, linewidth=LINE_WIDTH_CONST, linestyle=':',
                                     label='tidal intrusion\nlimit (constant)'))
-fig.legend(handles=legend_handles, loc='outside right center', ncol=1, frameon=True)
+fig.legend(handles=legend_handles, loc='outside right center', ncol=1, frameon=False)
 
 save_name = f"AGU_bed_slope_along_estuary_allQ_{TARGET_DATE}_{MASK_MODE}_w{SLOPE_WINDOW_KM:g}km"
 save_path = OUTPUT_DIR / f"{save_name}.png"

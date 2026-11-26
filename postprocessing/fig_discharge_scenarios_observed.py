@@ -231,7 +231,7 @@ legend_handles = [
                   label=f"{RPEAK} = {fmt_ratio(r)}")
     for r in all_ratios
 ]
-fig.legend(handles=legend_handles, loc='center left', ncol=1, frameon=True, labelspacing=0.35,
+fig.legend(handles=legend_handles, loc='center left', ncol=1, frameon=False, labelspacing=0.35,
            handlelength=1.6, borderaxespad=0,
            bbox_to_anchor=((a_right + 0.08) / FIG_W, (a_bottom + A_H / 2) / fig_h))
 
@@ -311,7 +311,7 @@ ax_d.legend(handles=[
       for name, marker in zip(HIGHLIGHT, HIGHLIGHT_MARKERS)],
     mlines.Line2D([], [], marker='o', linestyle='none', markersize=4, color=COLOR_OTHER,
                   markeredgewidth=0, label='other estuaries'),
-], loc='upper right', frameon=True, handletextpad=0.3, borderpad=0.4, labelspacing=0.35)
+], loc='upper right', frameon=False, handletextpad=0.3, borderpad=0.4, labelspacing=0.35)
 
 #%% --- 5. SAVE ---
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)

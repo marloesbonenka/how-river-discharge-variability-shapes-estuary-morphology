@@ -568,7 +568,7 @@ if any(d for d, *_ in _panels):
             fontsize=FONTSIZE_TICKS,
             loc='upper right',
             bbox_to_anchor=(0, 0.5),
-            frameon=True,
+            frameon=False,
         )
 
         fname_sub = 'hydro_metrics_combined_subplot' + ('_normalized' if NORMALIZE else '')

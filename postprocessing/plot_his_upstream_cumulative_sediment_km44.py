@@ -409,7 +409,7 @@ if comparison_series:
             loc="lower center",
             ncol=len(all_peak_ratios),
             bbox_to_anchor=(0.5, -0.18),
-            frameon=True,
+            frameon=False,
         )
         fig_l.suptitle(
             f"Cumulative sediment transport at km {RIVER_KM}  "
@@ -640,7 +640,7 @@ if PLOT_SCATTER and _hm_data:
     )
     ax_l.set_title("Sediment supply vs. Peak Frequency", fontsize=12, fontweight="bold")
     ax_l.set_ylim(_y_lim)
-    ax_l.legend(fontsize=9, loc="upper left", framealpha=0.85, title="Linear fit")
+    ax_l.legend(fontsize=9, loc="upper left", frameon=False, title="Linear fit")
     ax_l.grid(True, alpha=0.3, linewidth=0.5)
 
     # ── Right panel: amplitude (R_peak) ──────────────────────────────────────
@@ -668,7 +668,7 @@ if PLOT_SCATTER and _hm_data:
     ax_r.set_xlabel("$R_\\mathrm{peak}$")
     ax_r.set_title("Sediment supply vs. Peak Amplitude", fontweight="bold")
     ax_r.set_ylim(_y_lim)
-    ax_r.legend(loc="upper left", framealpha=0.85, title="Linear fit")
+    ax_r.legend(loc="upper left", frameon=False, title="Linear fit")
     ax_r.grid(True, alpha=0.3, linewidth=0.5)
 
     fig_sc.suptitle(

@@ -163,7 +163,7 @@ legend_handles = [mlines.Line2D([], [], color=GREY_CONST, linewidth=LINE_WIDTH_C
                                 label='constant')]
 legend_handles += [mlines.Line2D([], [], color=PM_COLOR[pm], linewidth=LINE_WIDTH,
                                  label=f'{RPEAK} = {pm}') for pm in ALL_PM]
-ax_c.legend(handles=legend_handles, loc='lower left', ncol=1, frameon=True, framealpha=1,
+ax_c.legend(handles=legend_handles, loc='lower left', ncol=1, frameon=False,
             borderaxespad=0.3, handlelength=1.6, handletextpad=0.4, labelspacing=0.2, borderpad=0.3)
 
 save_agu_figure(fig, OUTPUT_DIR / f"AGU_channel_number_width_ebb_Q{DISCHARGE}_n{N_PEAKS}")

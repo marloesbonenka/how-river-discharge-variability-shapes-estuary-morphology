@@ -372,7 +372,7 @@ for pm_val in all_pm_vals:
 fig.legend(
     handles=legend_handles, loc='upper center', ncol=len(legend_handles),
     bbox_to_anchor=(x_mid, (BOTTOM_MARGIN_IN - LEGEND_GAP_IN) / fig_height_in),
-    frameon=True, handlelength=1.8, handletextpad=0.5, columnspacing=1.2, borderaxespad=0,
+    frameon=False, handlelength=1.8, handletextpad=0.5, columnspacing=1.2, borderaxespad=0,
 )
 
 fig.suptitle(
